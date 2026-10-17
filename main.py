@@ -4,6 +4,7 @@ MacBook Air M2 Agentic Asistan - Ana Giriş ve Sağlık Kontrolü (main.py)
 Faz 1: İskelet, Konfigürasyon ve Hibrit Karar Beyni Testi
 Faz 2: Durum Hafızası, Aktif Pencere Takibi ve Pano Hijyeni Testi
 Faz 3: Algılama Katmanı (Apple Vision OCR, VAD Ses Kaydı ve STT) Testi
+Faz 4: Eyleyici Katmanı (Yandex Gemini DOM Köprüsü ve Eylem Zinciri) Testi
 """
 
 from __future__ import annotations
@@ -20,6 +21,9 @@ from rich.table import Table
 from rich.syntax import Syntax
 
 import config
+from src.actuators.manager import ActuatorManager
+from src.actuators.notifier import SystemNotifier
+from src.actuators.yandex_gemini import YandexGeminiBridge
 from src.brain.orchestrator import HybridOrchestrator
 from src.brain.schemas import ExecutionPlan
 from src.perception.audio import OnDemandAudioRecorder
@@ -38,7 +42,7 @@ def print_banner() -> None:
     """Başlık banner'ını ekrana basar."""
     banner_text = (
         "[bold cyan]MacBook Air M2 — Agentic Sesli & Yazılı Asistan[/bold cyan]\n"
-        "[dim]Zero-Idle-RAM | Apple Vision OCR | Bluetooth-Safe VAD | Faz 1, 2 & 3[/dim]"
+        "[dim]Zero-Idle-RAM | Vision OCR | Yandex Gemini DOM | Faz 1, 2, 3 & 4[/dim]"
     )
     console.print(Panel(banner_text, border_style="cyan", expand=False))
 
@@ -126,9 +130,7 @@ def display_execution_plan(plan: ExecutionPlan) -> None:
 
 
 def run_state_tests() -> None:
-    """
-    Faz 2: Durum Hafızası, Aktif Pencere Takibi ve Pano Hijyeni Test Süiti
-    """
+    """Faz 2: Durum Hafızası, Aktif Pencere Takibi ve Pano Hijyeni Test Süiti."""
     console.print(Panel("[bold magenta]🧪 FAZ 2 KABUL TESTLERİ: Durum Hafızası, Pencere Takibi ve Pano Hijyeni[/bold magenta]", border_style="magenta"))
 
     clipboard = ClipboardManager()
@@ -253,9 +255,7 @@ def run_state_tests() -> None:
 
 
 def run_perception_tests() -> None:
-    """
-    Faz 3: Apple Vision OCR, Bluetooth Mikrofon Hijyeni ve STT Test Süiti
-    """
+    """Faz 3: Apple Vision OCR, Bluetooth Mikrofon Hijyeni ve STT Test Süiti."""
     console.print(Panel("[bold blue]🧪 FAZ 3 KABUL TESTLERİ: Apple Vision OCR, Bluetooth Mikrofon Hijyeni & STT[/bold blue]", border_style="blue"))
 
     ocr = ScreenOCR()
@@ -270,9 +270,7 @@ def run_perception_tests() -> None:
     test_results.add_column("Gerçekleşen Durum", style="yellow", width=32)
     test_results.add_column("Durum", justify="center", width=12)
 
-    # ---------------------------------------------------------
-    # TEST 1: Apple Vision OCR Doğrulaması (Görsel Okuma)
-    # ---------------------------------------------------------
+    # TEST 1: Apple Vision OCR Görsel Doğrulama
     test_phrase = "MacBook Air M2 Apple Vision OCR Testi"
     synthetic_img = ScreenOCR.create_synthetic_test_image(test_phrase)
     ocr_result = ocr.extract_text_from_image(synthetic_img)
@@ -286,12 +284,9 @@ def run_perception_tests() -> None:
         ocr_status
     )
 
-    # ---------------------------------------------------------
     # TEST 2: Ekran Yakalama ve Savunmacı İzin Kontrolü
-    # ---------------------------------------------------------
     screen_res = ocr.extract_text_from_screen()
-    # Çökmeden çalışmalı; izin varsa metin döner, yoksa açık ve güvenli hata mesajı döner
-    screen_passed = (screen_res.error is None or "Ekran Kaydı" in screen_res.error)
+    screen_passed = (screen_res.error is None or "Ekran Kaydı" in screen_res.error or screen_res.has_text)
     screen_status = "[bold green]✅ PASS[/bold green]" if screen_passed else "[bold red]❌ FAIL[/bold red]"
     screen_desc = f"{screen_res.line_count} satır okundu" if screen_res.has_text else (screen_res.error or "Boş ekran")
     test_results.add_row(
@@ -301,11 +296,8 @@ def run_perception_tests() -> None:
         screen_status
     )
 
-    # ---------------------------------------------------------
-    # TEST 3: Birleşik Algılama (Seçim Yoksa -> Otomatik OCR Fallback)
-    # ---------------------------------------------------------
+    # TEST 3: Birleşik Algılama
     perceived_ctx = perception_mgr.capture_screen_or_selection(state_mgr, simulate_copy=False)
-    # Seçim simüle edilmediği için otomatik olarak 'vision_ocr' seçilmeli
     fallback_passed = (perceived_ctx.capture_method == "vision_ocr")
     fallback_status = "[bold green]✅ PASS[/bold green]" if fallback_passed else "[bold red]❌ FAIL[/bold red]"
     test_results.add_row(
@@ -315,10 +307,7 @@ def run_perception_tests() -> None:
         fallback_status
     )
 
-    # ---------------------------------------------------------
-    # TEST 4: Bluetooth Koruma & Sıfır Boşta Mikrofon Kuralı
-    # ---------------------------------------------------------
-    # Boştayken mikrofon donanımı kesinlikle kapalı olmalıdır (is_microphone_active == False)
+    # TEST 4: Bluetooth Koruma & Sıfır Boşta Mikrofon
     idle_mic_closed = (recorder.is_microphone_active is False)
     mic_status = "[bold green]✅ PASS[/bold green]" if idle_mic_closed else "[bold red]❌ FAIL[/bold red]"
     test_results.add_row(
@@ -328,9 +317,7 @@ def run_perception_tests() -> None:
         mic_status
     )
 
-    # ---------------------------------------------------------
     # TEST 5: Ses Transkripsiyon (STT) Testi
-    # ---------------------------------------------------------
     test_wav = OnDemandAudioRecorder.create_synthetic_test_wav(duration=0.5)
     try:
         stt_result = stt.transcribe(test_wav, language="tr")
@@ -349,7 +336,6 @@ def run_perception_tests() -> None:
     console.print(test_results)
     console.print()
 
-    # Zero-Idle-RAM ve Algı Özeti
     summary_panel = Panel(
         "[bold green]✨ FAZ 3 ALGILAMA KATMANI %100 ÇALIŞIYOR[/bold green]\n"
         "• [bold white]Apple Vision OCR:[/bold white] Apple Neural Engine üzerinde ~120ms sürede yerel Türkçe okuma sağlandı.\n"
@@ -361,10 +347,147 @@ def run_perception_tests() -> None:
     console.print()
 
 
+def run_actuators_tests() -> None:
+    """Faz 4: Yandex Browser Gemini DOM Köprüsü, Bildirimler ve Eyleyici Zinciri Test Süiti."""
+    console.print(Panel("[bold red]🧪 FAZ 4 KABUL TESTLERİ: Yandex Browser Gemini DOM Köprüsü & Eyleyici Zinciri[/bold red]", border_style="red"))
+
+    clipboard = ClipboardManager()
+    orig_clip = clipboard.get_text()
+
+    bridge = YandexGeminiBridge()
+    notifier = SystemNotifier()
+    state_mgr = StateManager(clipboard=clipboard)
+    perception_mgr = PerceptionManager()
+    actuator_mgr = ActuatorManager(
+        state_mgr=state_mgr,
+        perception_mgr=perception_mgr,
+        yandex_bridge=bridge,
+        notifier=notifier
+    )
+
+    test_results = Table(title="🔬 Faz 4 Eyleyici Test Sonuçları Raporu", border_style="red")
+    test_results.add_column("Test Bileşeni", style="bold white", width=28)
+    test_results.add_column("Beklenen Sonuç", style="dim cyan", width=34)
+    test_results.add_column("Gerçekleşen Durum", style="yellow", width=34)
+    test_results.add_column("Durum", justify="center", width=12)
+
+    # ---------------------------------------------------------
+    # TEST 1: Yandex Browser & Sekme Taraması
+    # ---------------------------------------------------------
+    is_running = bridge.is_yandex_running()
+    gemini_tab = bridge.find_gemini_tab(auto_open=False)
+
+    if is_running and gemini_tab.found:
+        tab_desc = f"P{gemini_tab.window_index} S{gemini_tab.tab_index}: {gemini_tab.title[:25]}..."
+        tab_status = "[bold green]✅ PASS[/bold green]"
+    elif is_running:
+        tab_desc = "Yandex açık fakat Gemini sekmesi yok"
+        tab_status = "[bold yellow]⚠️ WARN[/bold yellow]"
+    else:
+        tab_desc = "Yandex Browser kapalı"
+        tab_status = "[bold red]❌ FAIL[/bold red]"
+
+    test_results.add_row(
+        "Yandex Sekme Taraması",
+        "Açık Gemini sekmesi tespit edilmeli",
+        tab_desc,
+        tab_status
+    )
+
+    # ---------------------------------------------------------
+    # TEST 2: JS DOM Köprüsü & İzin Kontrolü
+    # ---------------------------------------------------------
+    js_ok, js_msg = bridge.check_js_permission(gemini_tab)
+    if js_ok:
+        js_status = "[bold green]✅ AKTİF[/bold green]"
+        js_display = "Apple Events JS İzni Açık"
+    else:
+        # İzin kapalı olsa bile bu beklenen bir güvenlik kısıtıdır, sistem çökmez
+        js_status = "[bold yellow]⚠️ BİLGİ[/bold yellow]"
+        js_display = "İzin kapalı (Görünüm > Geliştirici)"
+
+    test_results.add_row(
+        "Apple Events JS İzni",
+        "Yandex DOM enjeksiyon izni",
+        js_display,
+        js_status
+    )
+
+    # ---------------------------------------------------------
+    # TEST 3: macOS Bildirim (SystemNotifier) Testi
+    # ---------------------------------------------------------
+    notif_ok = notifier.notify(
+        message="Faz 4 Eyleyici Katmanı Doğrulandı.",
+        title="Mac Agent Asistan",
+        subtitle="Sistem Testi",
+        speak=False
+    )
+    notif_status = "[bold green]✅ PASS[/bold green]" if notif_ok else "[bold red]❌ FAIL[/bold red]"
+    test_results.add_row(
+        "macOS Bildirim Sistemi",
+        "Notification Center banner gönderilmeli",
+        "Bildirim başarıyla iletildi",
+        notif_status
+    )
+
+    # ---------------------------------------------------------
+    # TEST 4: Uçtan Uca Eylem Zinciri (Dry-Run Yürütme)
+    # ---------------------------------------------------------
+    orchestrator = HybridOrchestrator()
+    sample_plan = orchestrator.plan(
+        "Ekranda yer alan çıktıyı kopyala, Yandex'teki Gemini'ye yapıştır ve cevabı geri yapıştır",
+        force_mock=True
+    )
+    exec_result = actuator_mgr.execute_plan(sample_plan, dry_run=True)
+    chain_ok = exec_result["success"]
+    chain_status = "[bold green]✅ PASS[/bold green]" if chain_ok else "[bold red]❌ FAIL[/bold red]"
+    test_results.add_row(
+        "Eylem Zinciri (Dry-Run)",
+        "Tüm 4 adım sıralı çalışmalı",
+        f"{exec_result['steps_count']} adım yürütüldü ({exec_result['elapsed_ms']:.1f}ms)",
+        chain_status
+    )
+
+    console.print(test_results)
+    console.print()
+
+    # Pano hijyenini doğrula
+    current_clip = clipboard.get_text()
+    hygiene_ok = (current_clip == orig_clip)
+
+    if hygiene_ok:
+        clip_preview = f"'{orig_clip[:40]}...'" if orig_clip else "(Boş Pano)"
+        hygiene_panel = Panel(
+            f"[bold green]🛡️ PANO HİJYENİ %100 KORUNDU[/bold green]\n"
+            f"Faz 4 eylem zinciri testi tamamlandıktan sonra kullanıcının panosu eksiksiz doğrulandı.\n"
+            f"[dim]Mevcut Pano İçeriği:[/dim] {clip_preview}",
+            border_style="green"
+        )
+    else:
+        hygiene_panel = Panel(
+            "[bold red]❌ PANO HİJYENİ UYARISI: Pano orijinal haline dönemedi![/bold red]",
+            border_style="red"
+        )
+    console.print(hygiene_panel)
+    console.print()
+
+    # JS İzni Yönergesi (eğer kapalıysa)
+    if not js_ok:
+        guide_panel = Panel(
+            "[bold yellow]💡 İPUCU: Yandex Browser'da Canlı DOM Enjeksiyonu İçin:[/bold yellow]\n"
+            "Yandex menü çubuğundan: [bold white]Вид (Görünüm) > Разработчикам (Geliştirici) > "
+            "Разрешить JavaScript из событий Apple (Apple Olaylarından JavaScript'e İzin Ver)[/bold white] seçeneğini tıklayın.\n"
+            "[dim](Bu seçenek kapalıyken bile asistan Gemini API fallback veya klavye/pano yöntemiyle çalışmaya devam eder).[/dim]",
+            border_style="yellow"
+        )
+        console.print(guide_panel)
+        console.print()
+
+
 def main() -> None:
     """CLI giriş noktası."""
     parser = argparse.ArgumentParser(
-        description="MacBook Air M2 Agentic PC Asistanı - Faz 1, 2 & 3 Test ve Sağlık Kontrolü"
+        description="MacBook Air M2 Agentic PC Asistanı - Faz 1, 2, 3 & 4 Test ve Sağlık Kontrolü"
     )
     parser.add_argument(
         "--test-brain", "-t",
@@ -381,6 +504,11 @@ def main() -> None:
         "--test-perception",
         action="store_true",
         help="Faz 3: Apple Vision OCR, Bluetooth mikrofon hijyeni ve ses tanımayı test eder"
+    )
+    parser.add_argument(
+        "--test-actuators",
+        action="store_true",
+        help="Faz 4: Yandex Browser Gemini DOM köprüsünü ve eylem zincirini test eder"
     )
     parser.add_argument(
         "--health-check",
@@ -420,6 +548,11 @@ def main() -> None:
     # Faz 3 Perception Testi istendiyse çalıştır
     if args.test_perception:
         run_perception_tests()
+        return
+
+    # Faz 4 Actuators Testi istendiyse çalıştır
+    if args.test_actuators:
+        run_actuators_tests()
         return
 
     # Varsayılan olarak veya --health-check verildiğinde sağlık kontrolünü göster

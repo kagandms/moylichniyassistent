@@ -36,8 +36,8 @@
 | **Faz 1** | **Proje İskeleti, Anayasa & Hibrit Beyin** | **Tamamlandı** | `AGENTS.md`, `config.py`, `schemas.py`, `orchestrator.py`, `main.py` |
 | **Faz 2** | **Sistem Durumu & Pano/Pencere İzleme** | **Tamamlandı** | `clipboard.py`, `window_tracker.py`, `manager.py`, `main.py --test-state` |
 | **Faz 3** | **Algı Katmanı (MLX Whisper STT & Apple Vision OCR)** | **Tamamlandı** | `ocr.py`, `audio.py`, `stt.py`, `trigger.py`, `main.py --test-perception` |
-| **Faz 4** | **Eyleyici Katmanı & Yandex DOM Köprüsü** | Sıradaki | AppleScript Yandex Browser köprüsü, Gemini sekme kontrolü, sonuç alma |
-| **Faz 5** | **Uçtan Uca Entegrasyon & Sağlamlaştırma** | Planlandı | Tam otonom döngü, hata toleransı, bildirimler ve performans testleri |
+| **Faz 4** | **Eyleyici Katmanı & Yandex DOM Köprüsü** | **Tamamlandı** | `yandex_gemini.py`, `notifier.py`, `manager.py`, `main.py --test-actuators` |
+| **Faz 5** | **Uçtan Uca Entegrasyon & Sağlamlaştırma** | Sıradaki | Tam otonom döngü, arka plan servis modu, bildirimler ve canlı kullanım |
 
 ---
 
@@ -70,3 +70,11 @@
 - [x] Spotlight tarzı hızlı komut diyalogu ve Option+Space kısayol dinleyicisi (`src/perception/trigger.py`).
 - [x] Seçili metin yoksa otomatik Apple Vision OCR'a düşen birleşik algılama yöneticisi (`src/perception/manager.py`).
 - [x] CLI kabul testleri ve görsel algılama raporu (`python main.py --test-perception`).
+
+### Faz 4 (Tamamlandı)
+- [x] Yandex Browser açık sekmelerini tarama ve `gemini.google.com` sekmesini otomatik bulma/açma (`src/actuators/yandex_gemini.py`).
+- [x] AppleScript üzerinden DOM JavaScript enjeksiyonu ve streaming yanıt takibi.
+- [x] Savunmacı Apple Events JS izin kontrolü (`Görünüm > Geliştirici`) ve API fallback desteği.
+- [x] macOS yerel Bildirim Merkezi ve Türkçe `say` TTS seslendirici (`src/actuators/notifier.py`).
+- [x] State, Perception ve Actuator katmanlarını birleştiren uçtan uca plan yürütücüsü (`src/actuators/manager.py`).
+- [x] CLI kabul testleri ve pano koruma doğrulaması (`python main.py --test-actuators`).
