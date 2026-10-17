@@ -1,0 +1,18 @@
+# Faz 1: Temel Çekirdek ve Hibrit Karar Beyni
+pydantic>=2.6.0
+python-dotenv>=1.0.1
+requests>=2.31.0
+rich>=13.7.0
+google-genai>=0.1.1
+
+# Faz 2: Sistem Durumu & Kısayol Dinleyici (Hazırlık)
+pynput>=1.7.6
+
+# Faz 3: Algı & Ses (Gelecek Fazlar - macOS Apple Silicon için)
+# mlx-whisper>=0.2.0
+# sounddevice>=0.4.6
+# numpy>=1.26.0
+
+# Faz 4 & 5: macOS Erişilebilirlik ve Otomasyon (Hazırlık)
+# pyobjc-framework-Cocoa>=10.1
+# pyobjc-framework-ApplicationServices>=10.1

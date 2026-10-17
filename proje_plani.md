@@ -1,0 +1,53 @@
+# PROJE PLANI VE MİMARİ KARAR KAYDI (ADR)
+
+**Proje:** MacBook Air M2 Agentic Sesli ve Yazılı PC Asistanı  
+**Hedef Donanım:** Apple Silicon M2, 8/16 GB Unified Memory, macOS Sonoma/Sequoia  
+**Temel Felsefe:** Sıfır bütçe, ultra düşük RAM/pil tüketimi, sıfır boşta bellek (Zero-Idle-RAM), AppleScript yerel entegrasyonu.
+
+---
+
+## 1. MİMARİ KARAR KAYITLARI (ADR - Architectural Decision Records)
+
+### ADR-01: Zero-Idle-RAM & Hibrit Beyin (Cloud Gemini + Ollama On-Demand)
+- **Bağlam:** MacBook Air M2 fansız bir kasaya ve sınırlı paylaşımlı belleğe (Unified Memory) sahiptir. Yerel 7B model bellekte tutulduğunda 4.5-5.5 GB RAM sürekli kilitlenir.
+- **Karar:**
+  1. Varsayılan mod (`cloud`): Google Gemini Flash API (ücretsiz katman). Yerel makinede 0 MB RAM tüketir.
+  2. Çevrimdışı/Yedek mod (`local`): Yerel Ollama (`qwen2.5:7b` veya `llama3.2:3b`).
+  3. `auto` modu: İnternet varsa Gemini Cloud çağrılır ve yerel model `keep_alive=0` ile RAM'den tahliye edilir. İnternet kesilirse Ollama `keep_alive="5m"` ile anlık devreye girer.
+
+### ADR-02: Bluetooth HFP Sorunu ve Event-Driven Tetikleme (`Option + Space`)
+- **Bağlam:** Sürekli açık kalan mikrofon iş parçacıkları AirPods ve Bluetooth kulaklıkları hands-free profile (HFP) moduna sokarak sistem ses çıkışını 16kHz mono teneke sesine düşürür ve bataryayı hızla bitirir.
+- **Karar:** Mikrofon asla 7/24 dinlemede kalmaz. Yalnızca kullanıcı klavyeden `Option + Space` bastığında kayıt başlar, ses bittiğinde (VAD) mikrofon donanımı kapatılır.
+
+### ADR-03: Selenium/Playwright Yerine AppleScript + DOM Enjeksiyonu
+- **Bağlam:** Selenium veya Playwright başlatıldığında 500+ MB RAM harcayan yeni bir tarayıcı örneği açılır ve kullanıcının oturum açtığı Google/Gemini oturumu kullanılamaz.
+- **Karar:** Kullanıcının zaten açık olan **Yandex Browser** (`application "Yandex"`) penceresi AppleScript üzerinden hedeflenir. Açık olan Gemini sekmesi tespit edilip JavaScript ile prompt gönderilir ve sonuç okunur.
+
+### ADR-04: Pano (Clipboard) Koruması ve Geri Yükleme Protokolü
+- **Bağlam:** Otomasyon esnasında `Cmd+C` / `Cmd+V` yapıldığında kullanıcının panosundaki önemli veri ezilebilir.
+- **Karar:** Herhangi bir kopyalama/yapıştırma öncesinde panonun anlık görüntüsü alınır; işlem bittiğinde kullanıcının orijinal panosu birebir geri yüklenir.
+
+---
+
+## 2. 5 FAZLI GELİŞTİRME YOL HARİTASI
+
+| Faz | Kapsam | Durum | Çıktılar |
+| :--- | :--- | :---: | :--- |
+| **Faz 1** | **Proje İskeleti, Anayasa & Hibrit Beyin** | **Tamamlanıyor** | `AGENTS.md`, `config.py`, `schemas.py`, `orchestrator.py`, `main.py` |
+| **Faz 2** | **Sistem Durumu & Pano/Pencere İzleme** | Sıradaki | Aktif pencere algılama, pano snapshot/restore, `Option+Space` dinleyicisi |
+| **Faz 3** | **Algı Katmanı (MLX Whisper STT & Apple Vision OCR)** | Planlandı | Apple Silicon optimize MLX Whisper ses tanıma, yerel Vision OCR |
+| **Faz 4** | **Eyleyici Katmanı & Yandex DOM Köprüsü** | Planlandı | AppleScript Yandex Browser köprüsü, Gemini sekme kontrolü, sonuç alma |
+| **Faz 5** | **Uçtan Uca Entegrasyon & Sağlamlaştırma** | Planlandı | Tam otonom döngü, hata toleransı, bildirimler ve performans testleri |
+
+---
+
+## 3. FAZ 1 DETAYLI GÖREV LİSTESİ
+
+- [x] Temel dosya mimarisi ve Python sanal ortamı kurulumu (`uv venv`, `requirements.txt`).
+- [x] Proje Anayasası (`AGENTS.md`) ve Mimari Plan (`proje_plani.md`) oluşturulması.
+- [x] `.env.example` ve `.gitignore` yapılandırması.
+- [x] Merkezi konfigürasyon modülü (`config.py`).
+- [x] Pydantic v2 tabanlı yapısal plan şemaları (`src/brain/schemas.py`).
+- [x] Hibrit Karar Beyni (`src/brain/orchestrator.py` - Gemini Flash + Ollama Fallback + Lazy Unload).
+- [x] Gelecek fazlar için iskelet dizinleri (`src/state`, `src/perception`, `src/actuators`).
+- [x] Komut satırı sağlık kontrolü ve test aracı (`main.py --health-check`, `--test-brain`).
