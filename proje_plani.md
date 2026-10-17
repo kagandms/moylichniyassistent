@@ -35,8 +35,8 @@
 | :--- | :--- | :---: | :--- |
 | **Faz 1** | **Proje İskeleti, Anayasa & Hibrit Beyin** | **Tamamlandı** | `AGENTS.md`, `config.py`, `schemas.py`, `orchestrator.py`, `main.py` |
 | **Faz 2** | **Sistem Durumu & Pano/Pencere İzleme** | **Tamamlandı** | `clipboard.py`, `window_tracker.py`, `manager.py`, `main.py --test-state` |
-| **Faz 3** | **Algı Katmanı (MLX Whisper STT & Apple Vision OCR)** | Sıradaki | Apple Silicon optimize MLX Whisper ses tanıma, yerel Vision OCR |
-| **Faz 4** | **Eyleyici Katmanı & Yandex DOM Köprüsü** | Planlandı | AppleScript Yandex Browser köprüsü, Gemini sekme kontrolü, sonuç alma |
+| **Faz 3** | **Algı Katmanı (MLX Whisper STT & Apple Vision OCR)** | **Tamamlandı** | `ocr.py`, `audio.py`, `stt.py`, `trigger.py`, `main.py --test-perception` |
+| **Faz 4** | **Eyleyici Katmanı & Yandex DOM Köprüsü** | Sıradaki | AppleScript Yandex Browser köprüsü, Gemini sekme kontrolü, sonuç alma |
 | **Faz 5** | **Uçtan Uca Entegrasyon & Sağlamlaştırma** | Planlandı | Tam otonom döngü, hata toleransı, bildirimler ve performans testleri |
 
 ---
@@ -62,3 +62,11 @@
 - [x] Nöbetçi token (sentinel) ve savunmacı tuş simülasyonu ile seçili metin yakalama (`src/state/manager.py`).
 - [x] Erişilebilirlik izni kontrolü (`AXIsProcessTrusted`) ve seçim yoksa Faz 3 OCR sinyallemesi.
 - [x] CLI kabul testleri ve görsel pano hijyen raporu (`python main.py --test-state`).
+
+### Faz 3 (Tamamlandı)
+- [x] Apple Vision Framework (`VNRecognizeTextRequest`) ile yerel, sıfır boşta RAM ekran ve görsel OCR (`src/perception/ocr.py`).
+- [x] Bluetooth HFP korumalı, sadece çağrıldığında açılan on-demand mikrofon ve RMS/VAD sessizlik tespiti (`src/perception/audio.py`).
+- [x] MLX Whisper + Gemini Cloud Audio hibrit STT motoru (`src/perception/stt.py`).
+- [x] Spotlight tarzı hızlı komut diyalogu ve Option+Space kısayol dinleyicisi (`src/perception/trigger.py`).
+- [x] Seçili metin yoksa otomatik Apple Vision OCR'a düşen birleşik algılama yöneticisi (`src/perception/manager.py`).
+- [x] CLI kabul testleri ve görsel algılama raporu (`python main.py --test-perception`).

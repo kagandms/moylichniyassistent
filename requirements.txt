@@ -5,14 +5,19 @@ requests>=2.31.0
 rich>=13.7.0
 google-genai>=0.1.1
 
-# Faz 2: Sistem Durumu & Kısayol Dinleyici (Hazırlık)
+# Faz 2: Sistem Durumu & Kısayol Dinleyici
 pynput>=1.7.6
+pyobjc-core>=10.1
+pyobjc-framework-Cocoa>=10.1
+pyobjc-framework-ApplicationServices>=10.1
 
-# Faz 3: Algı & Ses (Gelecek Fazlar - macOS Apple Silicon için)
+# Faz 3: Algı, Apple Vision OCR & Ses (Apple Silicon M2)
+pyobjc-framework-Vision>=10.1
+ocrmac>=1.0.0
+pillow>=10.0.0
+sounddevice>=0.4.6
+numpy>=1.26.0
+scipy>=1.11.0
+
+# İsteğe bağlı yerel çevrimdışı ses modeli:
 # mlx-whisper>=0.2.0
-# sounddevice>=0.4.6
-# numpy>=1.26.0
-
-# Faz 4 & 5: macOS Erişilebilirlik ve Otomasyon (Hazırlık)
-# pyobjc-framework-Cocoa>=10.1
-# pyobjc-framework-ApplicationServices>=10.1

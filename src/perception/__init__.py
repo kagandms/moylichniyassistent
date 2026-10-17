@@ -1,11 +1,23 @@
 """
-Perception (Algı) Katmanı (src/perception)
-Faz 3'te aktif olarak doldurulacaktır.
-
-Sorumluluklar:
-1. MLX Whisper Konuşma Tanıma (Apple Silicon Metal GPU/NE optimize STT)
-2. Ses Aktivite Tespiti (VAD - Voice Activity Detection: 1.5 sn sessizlikte otomatik kapanma)
-3. macOS Yerel Vision OCR (VNRecognizeTextRequestKit ile ekrandaki metinleri sıfır harici kütüphane ile okuma)
+Algılama Katmanı (src/perception)
+MacBook Air M2 Zero-Idle-RAM Mimarisi (Faz 3)
 """
 
-__version__ = "0.3.0-stub"
+from src.perception.audio import AudioCaptureResult, OnDemandAudioRecorder
+from src.perception.manager import CaptureMethodType, PerceivedContext, PerceptionManager
+from src.perception.ocr import OCRResult, ScreenOCR
+from src.perception.stt import SpeechToTextEngine, STTResult
+from src.perception.trigger import CommandTrigger
+
+__all__ = [
+    "PerceptionManager",
+    "PerceivedContext",
+    "CaptureMethodType",
+    "ScreenOCR",
+    "OCRResult",
+    "OnDemandAudioRecorder",
+    "AudioCaptureResult",
+    "SpeechToTextEngine",
+    "STTResult",
+    "CommandTrigger",
+]
