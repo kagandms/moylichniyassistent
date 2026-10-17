@@ -111,6 +111,11 @@ class MacAgentRuntime:
         # 5. Zero-Idle-RAM Koruması: Arka planda kalmış yerel model varsa tahliye et
         self.orchestrator.unload_local_model()
 
+        # 6. Kullanıcı diyalogdan "🎙️ Yeni Komut" seçtiyse sohbeti kesmeden hemen yeni komut aç
+        if any(step.get("user_action") == "new_command" for step in exec_result.get("steps", [])):
+            logger.info("🎙️ Kullanıcı yanıt kutusundan 'Yeni Komut' seçti, hemen yeni komut penceresi açılıyor...")
+            return self.trigger_interactive_session(dry_run=dry_run)
+
         return {
             "status": "success" if exec_result["success"] else "failed",
             "user_command": user_command,

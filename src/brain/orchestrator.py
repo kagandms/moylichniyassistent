@@ -344,6 +344,30 @@ class HybridOrchestrator:
                     parameters=act.get("parameters", {})
                 ))
 
+        # Güvenlik Kuralı 1: Eğer kullanıcı web sitesi/arama istiyorsa ama model open_application('Yandex') verdiyse open_website'a çevir!
+        cmd_low = user_command.lower()
+        has_web_intent = (
+            any(w in cmd_low for w in [".com", ".net", ".org", "http", "www", "sitesi", "site", "ara", "youtube", "github", "google", "hava durumu"])
+            or ("yandex" in cmd_low and any(w in cmd_low for w in ["aç", "ara", "git"]))
+        )
+        if has_web_intent:
+            for a in actions:
+                if a.action == "open_application" and str(a.parameters.get("target_app", "")).lower() in ("yandex", "safari", "browser", "tarayıcı"):
+                    logger.info("🔄 [Güvenlik Kuralı] open_application('Yandex') -> open_website olarak düzeltildi.")
+                    a.action = "open_website"
+                    a.description = "Web sitesini Yandex Browser'da yeni sekmede aç"
+                    a.parameters = {"url": user_command}
+
+        # Güvenlik Kuralı 2: Soru-Cevap veya sohbet komutuysa ve ekran istenmemişse OCR/Gemini sekmesini kaldır
+        qa_words = ["nedir", "ne demek", "kimdir", "nasıl", "anlat", "açıkla", "fıkra", "şaka", "nasılsın", "selam", "merhaba", "what is", "who is", "how", "tell me", "explain", "что такое", "как", "привет"]
+        screen_words = ["ekran", "seçili", "pencere", "buradaki", "kopyala", "yapıştır", "ocr", "screen", "selection", "paste"]
+        if any(w in cmd_low for w in qa_words) and not any(w in cmd_low for w in screen_words):
+            sn_actions = [a for a in actions if a.action == "speak_or_notify"]
+            if sn_actions:
+                actions = sn_actions
+                for a in actions:
+                    a.parameters["notify_type"] = "dialog"
+
         # Kritik Güvenlik Kuralı: Uygulama açma/kapatma veya web açma varsa OCR veya Gemini adımlarını temizle
         has_app_control = any(a.action in ("close_application", "open_application", "open_website") for a in actions)
         if has_app_control:
@@ -471,9 +495,19 @@ class HybridOrchestrator:
                 actions=actions
             )
 
-        # B) SİSTEM KOMUTU: WEB SİTESİ AÇMA (YANDEX BROWSER İLE)
-        if (is_open_cmd or "http" in cmd_lower or ".com" in cmd_lower) and detected_web:
-            service_name, target_url = detected_web
+        # B) SİSTEM KOMUTU: WEB SİTESİ VEYA ARAMA AÇMA (YANDEX BROWSER İLE)
+        is_web_request = (
+            detected_web is not None
+            or any(ext in cmd_lower for ext in [".com", ".org", ".net", ".io", ".dev", "http://", "https://", "www."])
+            or (("yandex" in cmd_lower or "tarayıcı" in cmd_lower) and any(w in cmd_lower for w in ["aç", "ara", "git", "sitesi", "sitesini"]))
+        )
+        if is_web_request and (is_open_cmd or "ara" in cmd_lower or "git" in cmd_lower or ".com" in cmd_lower or "http" in cmd_lower):
+            if detected_web:
+                service_name, target_url = detected_web
+            else:
+                service_name = "Web"
+                target_url = user_command
+
             actions.append(AgentAction(
                 action="open_website",
                 description=f"{service_name} web sitesini Yandex Browser'da aç",
@@ -521,6 +555,46 @@ class HybridOrchestrator:
             return ExecutionPlan(
                 user_command=user_command,
                 reasoning=reason or f"Sistem komutu algılandı: {target} uygulaması açılıyor.",
+                brain_used="mock",
+                actions=actions
+            )
+
+        # C2) DOĞRUDAN SORU-CEVAP VE SOHBET MODU (Q&A) (ASLA OCR / YANDEX ÇAĞRILMAZ!)
+        qa_keywords = [
+            "nedir", "ne demek", "kimdir", "nasıl", "anlat", "açıkla", "özetle",
+            "fıkra", "şaka", "nasılsın", "selam", "merhaba", "günaydın", "iyi günler",
+            "saat kaç", "hava durumu", "what is", "who is", "how", "tell me", "explain",
+            "hello", "hi", "joke", "что такое", "кто такой", "как", "расскажи", "привет"
+        ]
+        screen_keywords = ["ekran", "seçili", "pencere", "buradaki", "kopyala", "yapıştır", "ocr", "screen", "selection", "paste"]
+        is_direct_qa = any(w in cmd_lower for w in qa_keywords) and not any(w in cmd_lower for w in screen_keywords)
+
+        if is_direct_qa:
+            if "kuantum" in cmd_lower:
+                msg = (
+                    "Kuantum bilgisayarlar, klasik bilgisayarlardaki 0 ve 1 bitleri yerine "
+                    "'kübit' (qubit) adı verilen ve aynı anda hem 0 hem 1 olabilen (süperpozisyon) "
+                    "kuantum durumlarını kullanan yeni nesil sistemlerdir. Dolanıklık ilkesiyle birleştiğinde, "
+                    "klasik bilgisayarların yüzyıllar alabileceği devasa optimizasyon ve kriptografi hesaplamalarını "
+                    "dakikalar içinde çözebilirler."
+                )
+            elif any(w in cmd_lower for w in ["selam", "merhaba", "nasılsın", "привет", "hello", "hi"]):
+                msg = "Harikayım, teşekkürler! MacBook Air M2 üzerinde sıfır boşta RAM mimarisiyle size yardımcı olmaya hazırım. Ne yapmak istersiniz?"
+            elif "fıkra" in cmd_lower or "şaka" in cmd_lower or "joke" in cmd_lower:
+                msg = "Yazılımcı bakkala gitmiş: 'Bir ekmek al, eğer yumurta varsa 10 tane al.' Yazılımcı eve 10 ekmekle dönmüş. Eşi sormuş: 'Neden 10 ekmek aldın?' Yazılımcı cevap vermiş: 'Çünkü yumurta vardı!'"
+            elif "saat" in cmd_lower:
+                msg = f"Şu anki yerel saat: {time.strftime('%H:%M:%S')}."
+            else:
+                msg = f"'{user_command}' sorunuz için: MacBook Air M2 asistanı yerel ve bulut zekasıyla hazırdır."
+
+            actions.append(AgentAction(
+                action="speak_or_notify",
+                description="Kullanıcıya doğrudan sesli ve diyalog yanıtı ver",
+                parameters={"message": msg, "notify_type": "dialog"}
+            ))
+            return ExecutionPlan(
+                user_command=user_command,
+                reasoning=reason or f"Doğrudan soru/sohbet algılandı: Ekran OCR yapılmadan yanıt verildi.",
                 brain_used="mock",
                 actions=actions
             )

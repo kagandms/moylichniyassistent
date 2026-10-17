@@ -163,7 +163,6 @@ class ActuatorManager:
                 elif action_name == "speak_or_notify":
                     msg = act.parameters.get("message", "İşlem başarıyla tamamlandı.")
                     notify_type = act.parameters.get("notify_type", "banner")
-                    speak = (notify_type == "voice")
 
                     # Yalancı Bildirim Engeli: Önceki eylem başarısız olduysa gerçek durumu bildir
                     if last_action_success is False and last_action_target:
@@ -171,18 +170,37 @@ class ActuatorManager:
                     elif last_action_success is True and last_action_info.startswith("web:"):
                         msg = f"{last_action_target} web sitesi Yandex Browser'da açıldı."
 
-                    # Dry-run modunda seslendirmeyi sessiz yap
-                    self.notifier.notify(
-                        message=msg,
-                        title="Mac Agent Asistan",
-                        speak=(speak and not dry_run)
+                    # Sohbet veya Bilgi Yanıtı Tespiti (Diyalog Penceresi + Sesli Okuma)
+                    is_chat_or_info = (
+                        notify_type == "dialog"
+                        or len(msg) > 40
+                        or any(w in act.description.lower() for w in ["yanıt", "cevap", "bilgi", "sohbet", "answer", "chat"])
                     )
+
+                    # Kural 2A: Sesli Yanıt (TTS) - Sohbet veya voice modunda her zaman oku
+                    should_speak = (notify_type in ("voice", "dialog") or is_chat_or_info) and not dry_run
+
+                    # Kural 2B: Ekranda Yanıt Diyaloğu (Kaybolmayan macOS Penceresi)
+                    should_dialog = is_chat_or_info and not dry_run
+
+                    logger.info(f"📢 [Bildirim/Yanıt] speak={should_speak}, dialog={should_dialog}: '{msg[:80]}...'")
+                    user_action = self.notifier.notify(
+                        message=msg,
+                        title="🤖 Mac Agent Asistan",
+                        speak=should_speak,
+                        show_dialog=should_dialog,
+                        dialog_timeout=25
+                    )
+
                     step_results.append({
                         "step": idx,
                         "action": action_name,
                         "status": "success",
                         "notification": msg,
-                        "spoken": speak and not dry_run,
+                        "notify_type": notify_type,
+                        "spoken": should_speak,
+                        "dialog_shown": should_dialog,
+                        "user_action": user_action,
                         "elapsed_ms": (time.time() - step_t0) * 1000
                     })
 

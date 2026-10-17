@@ -107,6 +107,56 @@ def normalize_app_name(raw_name: str) -> str:
     return cleaned
 
 
+def normalize_url_or_search(raw_target: str) -> str:
+    """
+    Parametreyi analiz edip garantili bir web URL'sine veya arama motoru URL'sine çevirir:
+    - 'https://...' veya 'http://...' -> Aynen korunur.
+    - 'youtube', 'github', 'chatgpt' vb. -> https://www.youtube.com
+    - 'youtube.com', 'google.com' -> https://youtube.com
+    - 'istanbul hava durumu', 'dolar kuru' -> https://www.google.com/search?q=...
+    """
+    import urllib.parse
+
+    cleaned = raw_target.strip().strip("'\"").strip()
+    lower = cleaned.lower()
+
+    # Kullanıcı "yandex'ten youtube.com sitesini aç" gibi komut metnini parametreye geçirmişse temizle
+    for prefix in ("yandex'ten ", "yandex'te ", "yandex ", "tarayıcıdan ", "tarayıcıda "):
+        if lower.startswith(prefix):
+            cleaned = cleaned[len(prefix):].strip()
+            lower = cleaned.lower()
+            break
+
+    for suffix in (" sitesini aç", " sitesi aç", " sitesine git", " sitesini", " sitesi", " aç", " git", " ara"):
+        if lower.endswith(suffix):
+            cleaned = cleaned[:-len(suffix)].strip()
+            lower = cleaned.lower()
+            break
+
+    # 1. Zaten tam URL mi?
+    if cleaned.startswith("http://") or cleaned.startswith("https://"):
+        return cleaned
+
+    # 2. Bilinen servisler veya Türkçe ekler
+    clean_key = lower
+    for suffix in ("'yi", "'yı", "'i", "'ı", "'yu", "'yü", "'u", "'ü", "yi", "yı", "i", "ı", "yu", "yü", "bu", "u", "ü"):
+        if clean_key.endswith(suffix) and len(clean_key) > len(suffix) + 2:
+            base = clean_key[:-len(suffix)]
+            if base in KNOWN_WEB_SERVICES:
+                clean_key = base
+                break
+
+    if clean_key in KNOWN_WEB_SERVICES:
+        return KNOWN_WEB_SERVICES[clean_key]
+
+    # 3. Domain içeriyor mu? (Boşluksuz ve nokta içeren: örn: youtube.com, github.com)
+    if "." in cleaned and " " not in cleaned:
+        return f"https://{cleaned}"
+
+    # 4. Arama sorgusu (örn: 'istanbul hava durumu')
+    return f"https://www.google.com/search?q={urllib.parse.quote_plus(cleaned)}"
+
+
 class AppController:
     """macOS uygulamalarını ve web sitelerini açma, kapatma ve kontrol yöneticisi."""
 
@@ -126,29 +176,50 @@ class AppController:
         except Exception:
             return False
 
-    @staticmethod
-    def open_url_in_browser(url: str, browser_name: str = "Yandex") -> bool:
-        """Belirtilen URL'yi Yandex Browser (veya varsayılan tarayıcı) içinde açar ve tarayıcıyı öne getirir."""
-        clean_url = url.strip()
-        if not clean_url.startswith("http://") and not clean_url.startswith("https://"):
-            clean_url = f"https://{clean_url}"
+    @classmethod
+    def open_url_in_browser(cls, url: str, browser_name: str = "Yandex") -> bool:
+        """
+        Belirtilen URL veya arama sorgusunu normalize eder ve Yandex Browser'da
+        AppleScript ile garantili olarak YENİ SEKME açıp en öne getirir.
+        """
+        target_url = normalize_url_or_search(url)
+        logger.info(f"🌐 [Web Açıcı] '{url}' -> '{target_url}' (Tarayıcı: {browser_name}) yeni sekmede açılıyor...")
 
-        logger.info(f"🌐 [Web Açıcı] {clean_url} -> '{browser_name}' içinde açılıyor...")
-
-        # 1. Deneme: 'open -a Yandex <url>'
+        # 1. Öncelik: AppleScript ile Yandex'te garantili YENİ SEKME açma ve öne getirme
+        apple_script = f'''
+        tell application "{browser_name}"
+            activate
+            if (count of windows) = 0 then
+                make new window
+            end if
+            tell front window
+                set newTab to make new tab at end of tabs with properties {{URL:"{target_url}"}}
+                set active tab index to (count of tabs)
+            end tell
+        end tell
+        '''
         try:
-            res = subprocess.run(["open", "-a", browser_name, clean_url], capture_output=True, text=True, timeout=5)
-            # Tarayıcıyı öne getir
+            res = subprocess.run(["osascript", "-e", apple_script], capture_output=True, text=True, timeout=6)
+            if res.returncode == 0:
+                logger.info(f"✅ [Web Açıcı] '{target_url}' {browser_name} içinde yeni sekmede başarıyla açıldı.")
+                return True
+            else:
+                logger.debug(f"AppleScript yeni sekme uyarısı: {res.stderr.strip()}")
+        except Exception as as_err:
+            logger.debug(f"AppleScript sekme açma hatası: {as_err}")
+
+        # 2. Fallback: 'open -a Yandex <url>'
+        try:
+            res = subprocess.run(["open", "-a", browser_name, target_url], capture_output=True, text=True, timeout=5)
             subprocess.run(["osascript", "-e", f'tell application "{browser_name}" to activate'], capture_output=True, timeout=3)
             if res.returncode == 0:
-                logger.info(f"✅ [Web Açıcı] '{clean_url}' {browser_name} sekmesinde açıldı ve öne getirildi.")
                 return True
         except Exception as e:
-            logger.debug(f"{browser_name} ile URL açma denemesi başarısız: {e}")
+            logger.debug(f"{browser_name} open -a denemesi başarısız: {e}")
 
-        # 2. Deneme: Varsayılan tarayıcıda aç (fallback)
+        # 3. Fallback: Genel sistem varsayılan tarayıcısı
         try:
-            res = subprocess.run(["open", clean_url], capture_output=True, text=True, timeout=5)
+            res = subprocess.run(["open", target_url], capture_output=True, text=True, timeout=5)
             return res.returncode == 0
         except Exception as e:
             logger.error(f"Genel URL açma hatası: {e}")

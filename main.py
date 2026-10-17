@@ -45,7 +45,7 @@ def print_banner() -> None:
     banner_text = (
         "[bold cyan]MacBook Air M2 — Agentic Sesli & Yazılı Asistan[/bold cyan]\n"
         "[dim]Zero-Idle-RAM | Vision OCR | Yandex Gemini DOM | Option+A Kısayolu[/dim]\n"
-        "[bold green]Uçtan Uca Tam Entegre Sistem (Faz 1 — Faz 7)[/bold green]"
+        "[bold green]Uçtan Uca Tam Entegre Sistem (Faz 1 — Faz 8)[/bold green]"
     )
     console.print(Panel(banner_text, border_style="cyan", expand=False))
 
