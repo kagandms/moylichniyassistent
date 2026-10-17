@@ -2,7 +2,8 @@
 Kısayol ve Komut Çubuğu Tetikleyici (src/perception/trigger.py)
 MacBook Air M2 Zero-Idle-RAM Mimarisi
 
-1. Option + Space (<alt>+<space>) genel klavye dinleyicisi (pynput).
+1. Option + A (<alt>+a) genel klavye dinleyicisi (pynput).
+   - TR/EN/RU klavyelerde macOS 'Option+A' basıldığında 'å' / 'Å' / vk=0 karakterleri de yakalanır.
 2. macOS Spotlight tarzı yerel komut diyalogu (osascript display dialog).
 """
 
@@ -10,6 +11,7 @@ from __future__ import annotations
 
 import logging
 import subprocess
+import time
 from typing import Callable, Optional, Tuple
 
 import config
@@ -32,7 +34,10 @@ class CommandTrigger:
 
     def __init__(self, hotkey: Optional[str] = None) -> None:
         self.hotkey = hotkey or config.HOTKEY
-        self._listener: Optional[keyboard.GlobalHotKeys] = None
+        self._listener: Optional[keyboard.Listener] = None
+        self._hotkey_listener: Optional[keyboard.GlobalHotKeys] = None
+        self._alt_pressed: bool = False
+        self._last_trigger_time: float = 0.0
 
     def prompt_user_command(self) -> Tuple[str, str]:
         """
@@ -47,7 +52,7 @@ class CommandTrigger:
         script = '''
         set dialogResult to display dialog "Masaüstü Asistanı için komutunuzu girin veya '🎙️ Sesli Konuş' butonuna basın:" ¬
             default answer "" ¬
-            with title "MacBook Air M2 Asistan" ¬
+            with title "MacBook Air M2 Asistan (Option + A)" ¬
             buttons {"Vazgeç", "🎙️ Sesli Konuş", "Çalıştır"} ¬
             default button "Çalıştır" ¬
             with icon note
@@ -90,17 +95,50 @@ class CommandTrigger:
 
     def start_hotkey_listener(self, on_trigger: Callable[[], None]) -> bool:
         """
-        Option + Space kısayolunu arka planda non-blocking dinlemeye başlar.
+        Option + A (veya yapılandırılan kısayol) tuşunu arka planda non-blocking dinlemeye başlar.
+        macOS klavye düzeni farklılıklarına (TR/EN/RU 'å', 'Å', vk=0) karşı çift katmanlı dinleme yapar.
         """
         if not _HAS_PYNPUT:
             logger.error("pynput kütüphanesi olmadan kısayol dinlenemez.")
             return False
 
+        def debounced_trigger():
+            now = time.time()
+            if now - self._last_trigger_time > 1.2:
+                self._last_trigger_time = now
+                logger.info("🎯 [Kısayol Tetiklendi] Option + A yakalandı!")
+                on_trigger()
+
         try:
-            hotkey_mapping = {self.hotkey: on_trigger}
-            self._listener = keyboard.GlobalHotKeys(hotkey_mapping)
+            # 1. Standart GlobalHotKeys Dinleyicisi
+            try:
+                hotkey_mapping = {self.hotkey: debounced_trigger}
+                self._hotkey_listener = keyboard.GlobalHotKeys(hotkey_mapping)
+                self._hotkey_listener.start()
+            except Exception as gh_err:
+                logger.debug(f"GlobalHotKeys başlatma uyarısı: {gh_err}")
+
+            # 2. macOS Klavye Düzeni Güvenlik Ağı (Listener)
+            # macOS'ta Option+A basıldığında 'å' karakteri veya vk=0 üretilebilir
+            def on_press(key):
+                if key in (keyboard.Key.alt, keyboard.Key.alt_l, keyboard.Key.alt_r, getattr(keyboard.Key, 'alt_gr', None)):
+                    self._alt_pressed = True
+                    return
+
+                if self._alt_pressed:
+                    char = getattr(key, 'char', None)
+                    vk = getattr(key, 'vk', None)
+                    if (char in ('a', 'A', 'å', 'Å')) or (vk == 0):
+                        debounced_trigger()
+
+            def on_release(key):
+                if key in (keyboard.Key.alt, keyboard.Key.alt_l, keyboard.Key.alt_r, getattr(keyboard.Key, 'alt_gr', None)):
+                    self._alt_pressed = False
+
+            self._listener = keyboard.Listener(on_press=on_press, on_release=on_release)
             self._listener.start()
-            logger.info(f"⌨️ [Kısayol Dinleyici] {self.hotkey} dinleniyor...")
+
+            logger.info(f"⌨️ [Kısayol Dinleyici] {self.hotkey} (Option + A) arka planda dinleniyor...")
             return True
         except Exception as e:
             logger.error(f"Kısayol dinleyici başlatılamadı: {e}")
@@ -108,10 +146,18 @@ class CommandTrigger:
 
     def stop_hotkey_listener(self) -> None:
         """Kısayol dinleyicisini durdurur ve kaynakları serbest bırakır."""
+        if self._hotkey_listener is not None:
+            try:
+                self._hotkey_listener.stop()
+            except Exception:
+                pass
+            self._hotkey_listener = None
+
         if self._listener is not None:
             try:
                 self._listener.stop()
             except Exception:
                 pass
             self._listener = None
-            logger.info("Kısayol dinleyici durduruldu.")
+
+        logger.info("Kısayol dinleyici durduruldu.")

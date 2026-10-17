@@ -44,8 +44,8 @@ def print_banner() -> None:
     """Başlık banner'ını ekrana basar."""
     banner_text = (
         "[bold cyan]MacBook Air M2 — Agentic Sesli & Yazılı Asistan[/bold cyan]\n"
-        "[dim]Zero-Idle-RAM | Vision OCR | Yandex Gemini DOM | Option+Space Kısayolu[/dim]\n"
-        "[bold green]Uçtan Uca Tam Entegre Sistem (Faz 1 — Faz 5)[/bold green]"
+        "[dim]Zero-Idle-RAM | Vision OCR | Yandex Gemini DOM | Option+A Kısayolu[/dim]\n"
+        "[bold green]Uçtan Uca Tam Entegre Sistem (Faz 1 — Faz 7)[/bold green]"
     )
     console.print(Panel(banner_text, border_style="cyan", expand=False))
 
@@ -582,7 +582,7 @@ def run_e2e_test() -> None:
     console.print(Panel(
         f"[bold green]🎉 PROJE TAMAMLANDI: MacBook Air M2 Agentic Asistanı Kullanıma Hazır![/bold green]\n"
         f"• Toplam E2E Test Süresi: [bold cyan]{total_elapsed:.1f} ms[/bold cyan]\n"
-        f"• Çalıştırma: [bold white]python main.py --listen[/bold white] ile Option+Space kısayolunu arka planda başlatabilir\n"
+        f"• Çalıştırma: [bold white]python main.py --listen[/bold white] ile Option+A kısayolunu arka planda başlatabilir\n"
         f"• Veya [bold white]baslat.command[/bold white] dosyasına çift tıklayarak menü üzerinden kullanabilirsiniz.",
         border_style="green"
     ))
@@ -647,7 +647,7 @@ def main() -> None:
     parser.add_argument(
         "--listen",
         action="store_true",
-        help="Option + Space (<alt>+<space>) klavye kısayolunu arka planda sürekli dinler (Daemon modu)"
+        help="Option + A (<alt>+a) klavye kısayolunu arka planda sürekli dinler (Daemon modu)"
     )
     parser.add_argument(
         "--once",
@@ -727,7 +727,7 @@ def main() -> None:
     if args.listen:
         console.print(Panel(
             f"[bold green]🎧 Kısayol Dinleyici Aktif:[/bold green] [bold white]{config.HOTKEY}[/bold white]\n"
-            f"[dim]Asistanı çağırmak için herhangi bir uygulamadayken Option + Space tuşlarına basın.\n"
+            f"[dim]Asistanı çağırmak için herhangi bir uygulamadayken Option + A tuşlarına basın.\n"
             f"Durdurmak için: [bold red]Ctrl + C[/bold red][/dim]",
             border_style="green"
         ))

@@ -1,7 +1,7 @@
 #!/bin/bash
 # ==============================================================================
 # MacBook Air M2 - Masaüstü AI Asistanı Başlatıcı (baslat.command)
-# Zero-Idle-RAM | Apple Vision OCR | Yandex Gemini DOM | Option+Space Kısayolu
+# Zero-Idle-RAM | Apple Vision OCR | Yandex Gemini DOM | Option+A Kısayolu
 # ==============================================================================
 
 # Betiğin bulunduğu dizine geç
@@ -41,7 +41,7 @@ PYTHON=".venv/bin/python"
 # Menü Döngüsü
 while true; do
     echo -e "${GREEN}Lütfen yapmak istediğiniz işlemi seçin:${NC}"
-    echo "  [1] 🎧 Kısayol Servisini Başlat (Option + Space Dinleyicisi)"
+    echo "  [1] 🎧 Kısayol Servisini Başlat (Option + A Dinleyicisi)"
     echo "  [2] ⚡ Hemen Komut Ver (Spotlight Komut Penceresini Aç)"
     echo "  [3] 🔑 Gemini API Anahtarı Tanımla (.env Kurulumu)"
     echo "  [4] 🔍 Sistem Sağlık ve Donanım Kontrolü (Diagnostics)"

@@ -67,34 +67,7 @@ class SpeechToTextEngine:
         t0 = time.time()
         effective_lang = None if language in (None, "auto") else language
 
-        # 1. YEREL MLX WHISPER (Eğer kurulu ve tercih edilmişse)
-        if _HAS_MLX_WHISPER and self.preferred_engine in ("auto", "local", "mlx"):
-            try:
-                logger.info("🧠 [MLX Whisper] Apple Silicon GPU üzerinde yerel ses tanıma başlatılıyor (TR/EN/RU)...")
-                transcribe_kwargs = {
-                    "path_or_hf_repo": "mlx-community/whisper-large-v3-turbo",
-                }
-                if effective_lang:
-                    transcribe_kwargs["language"] = effective_lang
-
-                res = mlx_whisper.transcribe(
-                    audio_path,
-                    **transcribe_kwargs
-                )
-                text = str(res.get("text", "")).strip()
-                detected_lang = str(res.get("language", effective_lang or "auto"))
-                elapsed = (time.time() - t0) * 1000
-                logger.info(f"✨ [MLX Whisper] Tanıma tamamlandı ({elapsed:.1f}ms, dil={detected_lang}): '{text}'")
-                return STTResult(
-                    text=text,
-                    language=detected_lang,
-                    engine_used="mlx_whisper",
-                    elapsed_ms=elapsed
-                )
-            except Exception as e:
-                logger.warning(f"⚠️ MLX Whisper hatası, bulut Gemini STT'ye geçiliyor: {e}")
-
-        # 2. BULUT GEMINI AUDIO API (0 MB Yerel RAM & Yüksek Doğruluk)
+        # 1. BULUT GEMINI AUDIO API (ÖNCELİKLİ: 0 MB Yerel RAM & Yüksek Doğruluk TR/EN/RU)
         if config.config.is_gemini_configured() and self.preferred_engine in ("auto", "cloud"):
             try:
                 logger.info("☁️ [Gemini Audio API] Ses verisi Gemini Flash'a aktarılıyor (0 MB RAM, TR/EN/RU)...")
@@ -138,7 +111,7 @@ class SpeechToTextEngine:
                     "contents": [{
                         "parts": [
                             {"inlineData": {"mimeType": "audio/wav", "data": b64_audio}},
-                            {"text": "Bu ses kaydını dinle ve içindeki Türkçe konuşmayı harfi harfine yazıya dök. Sadece transkripti ver."}
+                            {"text": "Listen to this audio recording and transcribe the speech exactly as spoken. Output ONLY the raw transcription in Turkish, English or Russian without any explanations."}
                         ]
                     }]
                 }
@@ -147,15 +120,43 @@ class SpeechToTextEngine:
                 data = res.json()
                 text = data["candidates"][0]["content"]["parts"][0]["text"].strip()
                 elapsed = (time.time() - t0) * 1000
+                logger.info(f"✨ [Gemini REST STT] Tanıma tamamlandı ({elapsed:.1f}ms): '{text}'")
                 return STTResult(
                     text=text,
-                    language=language,
+                    language=effective_lang or "auto",
                     engine_used="gemini_cloud",
                     elapsed_ms=elapsed
                 )
 
             except Exception as e:
-                logger.warning(f"⚠️ Bulut Gemini STT başarısız oldu: {e}")
+                logger.warning(f"⚠️ Bulut Gemini STT başarısız oldu, yerel motora geçiliyor: {e}")
+
+        # 2. YEREL MLX WHISPER (İnternetsiz / Çevrimdışı Fallback)
+        if _HAS_MLX_WHISPER and self.preferred_engine in ("auto", "local", "mlx"):
+            try:
+                logger.info("🧠 [MLX Whisper] Apple Silicon GPU üzerinde yerel ses tanıma başlatılıyor (TR/EN/RU)...")
+                transcribe_kwargs = {
+                    "path_or_hf_repo": "mlx-community/whisper-large-v3-turbo",
+                }
+                if effective_lang:
+                    transcribe_kwargs["language"] = effective_lang
+
+                res = mlx_whisper.transcribe(
+                    audio_path,
+                    **transcribe_kwargs
+                )
+                text = str(res.get("text", "")).strip()
+                detected_lang = str(res.get("language", effective_lang or "auto"))
+                elapsed = (time.time() - t0) * 1000
+                logger.info(f"✨ [MLX Whisper] Tanıma tamamlandı ({elapsed:.1f}ms, dil={detected_lang}): '{text}'")
+                return STTResult(
+                    text=text,
+                    language=detected_lang,
+                    engine_used="mlx_whisper",
+                    elapsed_ms=elapsed
+                )
+            except Exception as e:
+                logger.warning(f"⚠️ MLX Whisper hatası: {e}")
 
         # 3. ŞEMA DOĞRULAMALI SIMÜLASYON / TEST MOTORU
         elapsed = (time.time() - t0) * 1000

@@ -335,7 +335,8 @@ class HybridOrchestrator:
                 "paste_to_source_app",
                 "speak_or_notify",
                 "open_application",
-                "close_application"
+                "close_application",
+                "open_website"
             ):
                 actions.append(AgentAction(
                     action=action_name,
@@ -343,14 +344,14 @@ class HybridOrchestrator:
                     parameters=act.get("parameters", {})
                 ))
 
-        # Kritik Güvenlik Kuralı: Uygulama açma/kapatma varsa OCR veya Gemini adımlarını temizle
-        has_app_control = any(a.action in ("close_application", "open_application") for a in actions)
+        # Kritik Güvenlik Kuralı: Uygulama açma/kapatma veya web açma varsa OCR veya Gemini adımlarını temizle
+        has_app_control = any(a.action in ("close_application", "open_application", "open_website") for a in actions)
         if has_app_control:
-            actions = [a for a in actions if a.action in ("close_application", "open_application", "speak_or_notify")]
+            actions = [a for a in actions if a.action in ("close_application", "open_application", "open_website", "speak_or_notify")]
             if not any(a.action == "speak_or_notify" for a in actions):
                 actions.append(AgentAction(
                     action="speak_or_notify",
-                    description="Uygulama eylemi bildirimini ver",
+                    description="Eylem bildirimini ver",
                     parameters={"message": "İşlem tamamlandı.", "notify_type": "banner"}
                 ))
 
@@ -384,11 +385,37 @@ class HybridOrchestrator:
 
         # 2. Açma / Open / Launch / Открыть Komutları (TR / EN / RU)
         open_patterns = [
-            "aç", "başlat", "çalıştır",
-            "open", "launch", "start",
-            "открой", "запусти", "открыть", "запустить"
+            "aç", "başlat", "çalıştır", "git",
+            "open", "launch", "start", "go to",
+            "открой", "запусти", "открыть", "запустить", "перейди"
         ]
         is_open_cmd = any(w in cmd_lower for w in open_patterns)
+
+        # Bilinen popüler web servisleri (TR / EN / RU)
+        known_web_services = [
+            ("youtube", "https://www.youtube.com", "YouTube"),
+            ("youtub", "https://www.youtube.com", "YouTube"),
+            ("yutub", "https://www.youtube.com", "YouTube"),
+            ("ютуб", "https://www.youtube.com", "YouTube"),
+            ("github", "https://github.com", "GitHub"),
+            ("гитхаб", "https://github.com", "GitHub"),
+            ("google", "https://www.google.com", "Google"),
+            ("гугл", "https://www.google.com", "Google"),
+            ("chatgpt", "https://chatgpt.com", "ChatGPT"),
+            ("gemini", "https://gemini.google.com", "Gemini"),
+            ("netflix", "https://www.netflix.com", "Netflix"),
+            ("нетфликс", "https://www.netflix.com", "Netflix"),
+            ("twitter", "https://twitter.com", "Twitter"),
+            ("x.com", "https://x.com", "X"),
+            ("твиттер", "https://twitter.com", "Twitter"),
+            ("gmail", "https://mail.google.com", "Gmail"),
+        ]
+
+        detected_web = None
+        for alias, url, service_name in known_web_services:
+            if alias in cmd_lower:
+                detected_web = (service_name, url)
+                break
 
         # Bilinen macOS uygulamaları eşlemesi (TR / EN / RU)
         known_apps = [
@@ -444,7 +471,34 @@ class HybridOrchestrator:
                 actions=actions
             )
 
-        # B) SİSTEM KOMUTU: UYGULAMA AÇMA (ASLA OCR / YANDEX ÇAĞRILMAZ!)
+        # B) SİSTEM KOMUTU: WEB SİTESİ AÇMA (YANDEX BROWSER İLE)
+        if (is_open_cmd or "http" in cmd_lower or ".com" in cmd_lower) and detected_web:
+            service_name, target_url = detected_web
+            actions.append(AgentAction(
+                action="open_website",
+                description=f"{service_name} web sitesini Yandex Browser'da aç",
+                parameters={"url": target_url}
+            ))
+            if any(w in cmd_lower for w in ["открой", "открыть", "запусти", "запустить"]):
+                msg = f"Сайт {service_name} открыт."
+            elif any(w in cmd_lower for w in ["open", "launch", "start"]):
+                msg = f"{service_name} has been opened."
+            else:
+                msg = f"{service_name} açıldı."
+
+            actions.append(AgentAction(
+                action="speak_or_notify",
+                description="Web sitesi açma bildirimini ver",
+                parameters={"message": msg, "notify_type": "banner"}
+            ))
+            return ExecutionPlan(
+                user_command=user_command,
+                reasoning=reason or f"Web servisi algılandı: {service_name} Yandex Browser'da açılıyor.",
+                brain_used="mock",
+                actions=actions
+            )
+
+        # C) SİSTEM KOMUTU: UYGULAMA AÇMA (ASLA OCR / YANDEX ÇAĞRILMAZ!)
         if is_open_cmd and detected_app:
             target = detected_app
             actions.append(AgentAction(
@@ -471,7 +525,7 @@ class HybridOrchestrator:
                 actions=actions
             )
 
-        # C) GEMINI & METİN İŞLEME KOMUTLARI (TR / EN / RU)
+        # D) GEMINI & METİN İŞLEME KOMUTLARI (TR / EN / RU)
         needs_paste = any(w in cmd_lower for w in [
             "yapıştır", "geri", "aktar", "yerine",
             "paste", "insert", "back",

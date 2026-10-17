@@ -157,12 +157,19 @@ class ActuatorManager:
                             })
 
                 # -----------------------------------------------------------------
+                # -----------------------------------------------------------------
                 # EYLEM 4: speak_or_notify
                 # -----------------------------------------------------------------
                 elif action_name == "speak_or_notify":
                     msg = act.parameters.get("message", "İşlem başarıyla tamamlandı.")
                     notify_type = act.parameters.get("notify_type", "banner")
                     speak = (notify_type == "voice")
+
+                    # Yalancı Bildirim Engeli: Önceki eylem başarısız olduysa gerçek durumu bildir
+                    if last_action_success is False and last_action_target:
+                        msg = f"⚠️ {last_action_target} açılamadı veya bulunamadı."
+                    elif last_action_success is True and last_action_info.startswith("web:"):
+                        msg = f"{last_action_target} web sitesi Yandex Browser'da açıldı."
 
                     # Dry-run modunda seslendirmeyi sessiz yap
                     self.notifier.notify(
@@ -185,14 +192,25 @@ class ActuatorManager:
                 elif action_name == "open_application":
                     raw_target = act.parameters.get("target_app") or act.parameters.get("app_name", "")
                     target_name = normalize_app_name(raw_target)
-                    logger.info(f"📱 [Uygulama Açma] '{target_name}' açılıyor (dry_run={dry_run})...")
+                    logger.info(f"📱 [Uygulama/Web Açma] '{target_name}' açılıyor (dry_run={dry_run})...")
 
                     if dry_run:
                         ok = True
+                        opened_desc = f"app:{target_name}"
                         status_msg = f"Dry-run: '{target_name}' açıldı simüle edildi."
                     else:
-                        ok = AppController.open_app(target_name)
-                        status_msg = f"'{target_name}' başarıyla açıldı." if ok else f"'{target_name}' açılamadı."
+                        ok, opened_desc = AppController.open_app(raw_target)
+                        if ok:
+                            if opened_desc.startswith("web:"):
+                                status_msg = f"'{target_name}' web sitesi Yandex Browser'da açıldı ({opened_desc[4:]})."
+                            else:
+                                status_msg = f"'{target_name}' uygulaması başarıyla açıldı."
+                        else:
+                            status_msg = f"'{target_name}' uygulaması veya web sitesi açılamadı."
+
+                    last_action_success = ok
+                    last_action_target = target_name
+                    last_action_info = opened_desc
 
                     step_results.append({
                         "step": idx,
@@ -200,13 +218,43 @@ class ActuatorManager:
                         "status": "success" if ok else "failed",
                         "target_app": target_name,
                         "message": status_msg,
+                        "opened_info": opened_desc,
                         "elapsed_ms": (time.time() - step_t0) * 1000
                     })
                     if not ok and not dry_run:
                         success_overall = False
 
                 # -----------------------------------------------------------------
-                # EYLEM 6: close_application
+                # EYLEM 6: open_website
+                # -----------------------------------------------------------------
+                elif action_name == "open_website":
+                    raw_url = act.parameters.get("url") or act.parameters.get("target_url") or act.parameters.get("target_app", "")
+                    logger.info(f"🌐 [Web Açma] '{raw_url}' açılıyor (dry_run={dry_run})...")
+
+                    if dry_run:
+                        ok = True
+                        status_msg = f"Dry-run: '{raw_url}' açıldı simüle edildi."
+                    else:
+                        ok = AppController.open_url_in_browser(raw_url)
+                        status_msg = f"'{raw_url}' Yandex Browser'da açıldı." if ok else f"'{raw_url}' açılamadı."
+
+                    last_action_success = ok
+                    last_action_target = raw_url
+                    last_action_info = f"web:{raw_url}"
+
+                    step_results.append({
+                        "step": idx,
+                        "action": action_name,
+                        "status": "success" if ok else "failed",
+                        "url": raw_url,
+                        "message": status_msg,
+                        "elapsed_ms": (time.time() - step_t0) * 1000
+                    })
+                    if not ok and not dry_run:
+                        success_overall = False
+
+                # -----------------------------------------------------------------
+                # EYLEM 7: close_application
                 # -----------------------------------------------------------------
                 elif action_name == "close_application":
                     raw_target = act.parameters.get("target_app") or act.parameters.get("app_name", "")
@@ -219,6 +267,10 @@ class ActuatorManager:
                     else:
                         ok = AppController.close_app(target_name)
                         status_msg = f"'{target_name}' başarıyla kapatıldı." if ok else f"'{target_name}' kapatılamadı veya zaten kapalıydı."
+
+                    last_action_success = ok
+                    last_action_target = target_name
+                    last_action_info = f"close:{target_name}"
 
                     step_results.append({
                         "step": idx,

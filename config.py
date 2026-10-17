@@ -65,7 +65,7 @@ class Settings:
 
     # 3. Kısayol ve Algı (Faz 2 & 3 Hazırlık)
     HOTKEY: str = field(
-        default_factory=lambda: os.getenv("HOTKEY", "<alt>+<space>").strip()
+        default_factory=lambda: os.getenv("HOTKEY", "<alt>+a").strip()
     )
     VAD_SILENCE_SECONDS: float = field(
         default_factory=lambda: float(os.getenv("VAD_SILENCE_SECONDS", "1.5"))

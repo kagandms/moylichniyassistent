@@ -1,13 +1,13 @@
 """
-macOS Uygulama Kontrolcüsü (src/actuators/app_controller.py)
-Uygulama açma, kapatma ve kontrol işlevlerini yönetir.
+macOS Uygulama ve Web Kontrolcüsü (src/actuators/app_controller.py)
+Uygulama açma, kapatma, web sitelerini Yandex Browser'da açma ve akıllı web fallback işlevlerini yönetir.
 """
 
 from __future__ import annotations
 
 import logging
 import subprocess
-from typing import Optional
+from typing import Optional, Tuple
 
 logger = logging.getLogger("mac_assistant.actuators.app_controller")
 
@@ -49,18 +49,57 @@ APP_ALIASES = {
     "spotify": "Spotify",
 }
 
+# Bilinen popüler web servisleri ve doğrudan URL eşlemeleri
+KNOWN_WEB_SERVICES = {
+    "youtube": "https://www.youtube.com",
+    "youtubu": "https://www.youtube.com",
+    "youtubeu": "https://www.youtube.com",
+    "youtube'u": "https://www.youtube.com",
+    "yt": "https://www.youtube.com",
+    "github": "https://github.com",
+    "githubı": "https://github.com",
+    "github'ı": "https://github.com",
+    "gmail": "https://mail.google.com",
+    "gmail'i": "https://mail.google.com",
+    "gmaili": "https://mail.google.com",
+    "chatgpt": "https://chatgpt.com",
+    "chatgpt'yi": "https://chatgpt.com",
+    "chatgptyi": "https://chatgpt.com",
+    "gemini": "https://gemini.google.com",
+    "geminiyi": "https://gemini.google.com",
+    "gemini'yi": "https://gemini.google.com",
+    "google gemini": "https://gemini.google.com",
+    "twitter": "https://x.com",
+    "x": "https://x.com",
+    "netflix": "https://www.netflix.com",
+    "netflixi": "https://www.netflix.com",
+    "netflix'i": "https://www.netflix.com",
+    "instagram": "https://www.instagram.com",
+    "instagramı": "https://www.instagram.com",
+    "instagram'ı": "https://www.instagram.com",
+    "linkedin": "https://www.linkedin.com",
+    "linkedini": "https://www.linkedin.com",
+    "google": "https://www.google.com",
+    "googleı": "https://www.google.com",
+    "yandex web": "https://ya.ru",
+    "reddit": "https://www.reddit.com",
+    "spotify web": "https://open.spotify.com",
+}
+
 
 def normalize_app_name(raw_name: str) -> str:
     """Kullanıcının söylediği veya modelin ürettiği uygulama adını standartlaştırır."""
     cleaned = raw_name.strip().strip("'\"").strip()
     lower = cleaned.lower()
 
-    # Türkçe ekleri temizleme: "antigravityi" -> "antigravity"
-    for suffix in ("'yi", "'yı", "'i", "'ı", "'yu", "'yü", "yi", "yı", "i", "ı"):
+    # Türkçe ekleri temizleme: "antigravityi" -> "antigravity", "youtubu" -> "youtube"
+    for suffix in ("'yi", "'yı", "'i", "'ı", "'yu", "'yü", "'u", "'ü", "yi", "yı", "i", "ı", "yu", "yü", "bu", "bı", "bi", "u", "ü"):
         if lower.endswith(suffix) and len(lower) > len(suffix) + 2:
             base = lower[:-len(suffix)]
             if base in APP_ALIASES:
                 return APP_ALIASES[base]
+            if base in KNOWN_WEB_SERVICES:
+                return base.capitalize()
 
     if lower in APP_ALIASES:
         return APP_ALIASES[lower]
@@ -69,7 +108,7 @@ def normalize_app_name(raw_name: str) -> str:
 
 
 class AppController:
-    """macOS uygulamalarını açma, kapatma ve durumlarını denetleme yöneticisi."""
+    """macOS uygulamalarını ve web sitelerini açma, kapatma ve kontrol yöneticisi."""
 
     @staticmethod
     def is_running(app_name: str) -> bool:
@@ -88,8 +127,63 @@ class AppController:
             return False
 
     @staticmethod
-    def open_app(app_name: str) -> bool:
-        """Belirtilen uygulamayı başlatır veya ön plana getirir."""
+    def open_url_in_browser(url: str, browser_name: str = "Yandex") -> bool:
+        """Belirtilen URL'yi Yandex Browser (veya varsayılan tarayıcı) içinde açar ve tarayıcıyı öne getirir."""
+        clean_url = url.strip()
+        if not clean_url.startswith("http://") and not clean_url.startswith("https://"):
+            clean_url = f"https://{clean_url}"
+
+        logger.info(f"🌐 [Web Açıcı] {clean_url} -> '{browser_name}' içinde açılıyor...")
+
+        # 1. Deneme: 'open -a Yandex <url>'
+        try:
+            res = subprocess.run(["open", "-a", browser_name, clean_url], capture_output=True, text=True, timeout=5)
+            # Tarayıcıyı öne getir
+            subprocess.run(["osascript", "-e", f'tell application "{browser_name}" to activate'], capture_output=True, timeout=3)
+            if res.returncode == 0:
+                logger.info(f"✅ [Web Açıcı] '{clean_url}' {browser_name} sekmesinde açıldı ve öne getirildi.")
+                return True
+        except Exception as e:
+            logger.debug(f"{browser_name} ile URL açma denemesi başarısız: {e}")
+
+        # 2. Deneme: Varsayılan tarayıcıda aç (fallback)
+        try:
+            res = subprocess.run(["open", clean_url], capture_output=True, text=True, timeout=5)
+            return res.returncode == 0
+        except Exception as e:
+            logger.error(f"Genel URL açma hatası: {e}")
+            return False
+
+    @classmethod
+    def open_app(cls, app_name: str) -> Tuple[bool, str]:
+        """
+        Belirtilen uygulamayı başlatır veya ön plana getirir.
+        Eğer hedef bir web servisi ise veya masaüstü uygulaması bulunamazsa
+        akıllı web fallback mekanizması devreye girerek Yandex Browser'da açar.
+        
+        Döndürür: (başarılı_mı, açılan_hedef_türü_ve_adı)
+        """
+        raw_clean = app_name.strip().strip("'\"").strip()
+        lower_raw = raw_clean.lower()
+
+        # 0. Adım: Bilinen bir web servisi veya URL mi?
+        cleaned_web = lower_raw
+        for suffix in ("'yi", "'yı", "'i", "'ı", "'yu", "'yü", "'u", "'ü", "yi", "yı", "i", "ı", "yu", "yü", "bu", "u", "ü"):
+            if cleaned_web.endswith(suffix) and len(cleaned_web) > len(suffix) + 2:
+                base = cleaned_web[:-len(suffix)]
+                if base in KNOWN_WEB_SERVICES:
+                    cleaned_web = base
+                    break
+
+        if (
+            cleaned_web in KNOWN_WEB_SERVICES
+            or lower_raw in KNOWN_WEB_SERVICES
+            or any(ext in lower_raw for ext in [".com", ".org", ".net", ".io", ".dev", "http://", "https://"])
+        ):
+            url = KNOWN_WEB_SERVICES.get(cleaned_web) or KNOWN_WEB_SERVICES.get(lower_raw) or (lower_raw if lower_raw.startswith("http") else f"https://{lower_raw}")
+            ok = cls.open_url_in_browser(url)
+            return ok, f"web:{url}"
+
         target = normalize_app_name(app_name)
         logger.info(f"🚀 Uygulama açılıyor: {target}")
 
@@ -98,17 +192,38 @@ class AppController:
         try:
             res = subprocess.run(["osascript", "-e", apple_script], capture_output=True, text=True, timeout=5)
             if res.returncode == 0:
-                return True
+                return True, f"app:{target}"
         except Exception as e:
             logger.debug(f"AppleScript activate denemesi başarısız: {e}")
 
         # 2. Deneme: open -a
         try:
             res = subprocess.run(["open", "-a", target], capture_output=True, text=True, timeout=5)
-            return res.returncode == 0
+            if res.returncode == 0:
+                return True, f"app:{target}"
         except Exception as e:
-            logger.error(f"open -a komutu başarısız: {e}")
-            return False
+            logger.debug(f"open -a komutu başarısız: {e}")
+
+        # 3. Deneme: Bilinen bir web servisi ile eşleşiyorsa Yandex Browser'da aç
+        matching_web_url = None
+        words = set(lower_raw.replace("_", " ").replace("-", " ").split())
+        for service_key, service_url in KNOWN_WEB_SERVICES.items():
+            if len(service_key) <= 2:
+                if service_key in words or service_key == lower_raw or service_key == cleaned_web:
+                    matching_web_url = service_url
+                    break
+            else:
+                if service_key == lower_raw or service_key == cleaned_web or service_key in lower_raw or service_key in cleaned_web:
+                    matching_web_url = service_url
+                    break
+
+        if matching_web_url:
+            logger.info(f"🌐 [Akıllı Web Fallback] '{target}' yerel uygulaması bulunamadı, web servisi açılıyor: {matching_web_url}")
+            ok = cls.open_url_in_browser(matching_web_url)
+            if ok:
+                return True, f"web:{matching_web_url}"
+
+        return False, f"failed:{target}"
 
     @staticmethod
     def close_app(app_name: str) -> bool:
