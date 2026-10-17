@@ -210,6 +210,41 @@ class YandexGeminiBridge:
         except Exception as e:
             return False, str(e)
 
+    def ui_paste_fallback(self, tab: GeminiTabInfo, text: str) -> bool:
+        """
+        Apple Events JS izni kapalı olduğunda Yandex sekmesini öne getirip
+        klavye/pano simülasyonu ile promptu yapıştırıp gönderir.
+        """
+        try:
+            activate_script = f'''
+            tell application "{self.browser_name}"
+                activate
+                set active tab index of window {tab.window_index} to {tab.tab_index}
+                set index of window {tab.window_index} to 1
+            end tell
+            '''
+            subprocess.run(["osascript", "-e", activate_script], check=False, timeout=2.0)
+            time.sleep(0.3)
+
+            # Panoya koyup Cmd+V ve Return simüle et
+            from src.state.clipboard import ClipboardManager
+            cb = ClipboardManager()
+            cb.set_text(text)
+
+            keystroke_script = '''
+            tell application "System Events"
+                keystroke "v" using command down
+                delay 0.15
+                key code 36
+            end tell
+            '''
+            subprocess.run(["osascript", "-e", keystroke_script], check=False, timeout=2.0)
+            logger.info("⌨️ [UI Paste Fallback] Metin Yandex sekmesine yapıştırıldı ve Enter gönderildi.")
+            return True
+        except Exception as e:
+            logger.error(f"UI Paste Fallback hatası: {e}")
+            return False
+
     def send_prompt_and_wait_response(
         self,
         prompt: str,

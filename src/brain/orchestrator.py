@@ -34,41 +34,9 @@ if not logger.handlers:
     logger.setLevel(logging.DEBUG if config.DEBUG else logging.INFO)
 
 
-SYSTEM_PROMPT = """Sen MacBook Air M2 üzerinde çalışan bir masaüstü AI asistanının karar beynisin.
-Kullanıcının doğal dilde verdiği komutu analiz etmeli ve bunu SADECE aşağıdaki 4 atomik eylemden oluşan sıralı bir plana dönüştürmelisin:
+from src.brain.prompts import AGENTIC_SYSTEM_PROMPT
 
-DESTEKLENEN ARAÇLAR (ACTIONS):
-1. 'capture_source_context':
-   - Kullanıcının o anda çalıştığı aktif pencereyi ve seçili metni (veya ekran görüntüsünü) kopyalayıp hafızaya alır.
-   - Parametreler: {"capture_type": "selection" | "screen", "save_source_app": true}
-
-2. 'send_to_yandex_gemini':
-   - Yandex Browser'da açık olan Google Gemini sekmesine odaklanır (yoksa açar), metni/promptu yapıştırıp cevabı bekler.
-   - Parametreler: {"prompt": "...", "include_captured_text": true}
-
-3. 'paste_to_source_app':
-   - Gemini'den alınan cevabı kullanıcının ilk başta çalıştığı kaynak pencereye geri yapıştırır.
-   - Parametreler: {"target": "original_app"}
-
-4. 'speak_or_notify':
-   - Kullanıcıya işlem tamamlandığında veya hata durumunda sesli ya da görsel bildirim verir.
-   - Parametreler: {"message": "...", "notify_type": "voice" | "banner"}
-
-YANIT FORMATI:
-Sadece ve sadece aşağıdaki JSON şemasını döndür. Markdown etiketleri veya ekstra açıklama yazma:
-{
-  "user_command": "<kullanıcının orijinal komutu>",
-  "reasoning": "<bu adımların neden seçildiğine dair kısa açıklama>",
-  "actions": [
-    {
-      "action": "capture_source_context",
-      "description": "Kaynak uygulamadan seçili metni kopyala",
-      "parameters": {"capture_type": "selection", "save_source_app": true}
-    },
-    ...
-  ]
-}
-"""
+SYSTEM_PROMPT = AGENTIC_SYSTEM_PROMPT
 
 
 class HybridOrchestrator:

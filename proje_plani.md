@@ -37,7 +37,7 @@
 | **Faz 2** | **Sistem Durumu & Pano/Pencere İzleme** | **Tamamlandı** | `clipboard.py`, `window_tracker.py`, `manager.py`, `main.py --test-state` |
 | **Faz 3** | **Algı Katmanı (MLX Whisper STT & Apple Vision OCR)** | **Tamamlandı** | `ocr.py`, `audio.py`, `stt.py`, `trigger.py`, `main.py --test-perception` |
 | **Faz 4** | **Eyleyici Katmanı & Yandex DOM Köprüsü** | **Tamamlandı** | `yandex_gemini.py`, `notifier.py`, `manager.py`, `main.py --test-actuators` |
-| **Faz 5** | **Uçtan Uca Entegrasyon & Sağlamlaştırma** | Sıradaki | Tam otonom döngü, arka plan servis modu, bildirimler ve canlı kullanım |
+| **Faz 5** | **Uçtan Uca Entegrasyon & Sağlamlaştırma** | **Tamamlandı** | `runtime.py`, `prompts.py`, `baslat.command`, `README.md`, `--test-e2e` |
 
 ---
 
@@ -78,3 +78,13 @@
 - [x] macOS yerel Bildirim Merkezi ve Türkçe `say` TTS seslendirici (`src/actuators/notifier.py`).
 - [x] State, Perception ve Actuator katmanlarını birleştiren uçtan uca plan yürütücüsü (`src/actuators/manager.py`).
 - [x] CLI kabul testleri ve pano koruma doğrulaması (`python main.py --test-actuators`).
+
+### Faz 5 (Tamamlandı)
+- [x] Zenginleştirilmiş Türkçe Agentic Sistem Promptu ve Few-Shot senaryoları (`src/brain/prompts.py`).
+- [x] Yandex Gemini UI klavye/pano fallback otomasyonu (`ui_paste_fallback`).
+- [x] Uçtan uca asistan çalışma zamanı motoru (`src/runtime.py` - `MacAgentRuntime`).
+- [x] Option + Space (`<alt>+<space>`) arka plan kısayol dinleyici servisi (`main.py --listen`).
+- [x] Tek seferlik Spotlight komut penceresi ve doğrudan çalıştırma modları (`--once`, `--cmd`).
+- [x] Finder çift tıklama interaktif masaüstü başlatıcısı (`baslat.command`).
+- [x] Uçtan uca (E2E) sistem kabul testi ve raporlama (`main.py --test-e2e`).
+- [x] Kapsamlı Türkçe kullanım kılavuzu ve Yandex JS izin rehberi (`README.md`).
