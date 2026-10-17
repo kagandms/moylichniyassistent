@@ -1,11 +1,17 @@
 """
-State & Memory Katmanı (src/state)
-Faz 2'de aktif olarak doldurulacaktır.
-
-Sorumluluklar:
-1. Aktif Pencere Takipçisi (Active Window Tracker via Quartz / NSWorkspace)
-2. Pano Hijyen Yöneticisi (Clipboard Snapshot & Restore via NSPasteboard)
-3. Kısayol Dinleyicisi (`Option + Space` Hotkey Listener via pynput / Quartz Events)
+Durum Hafızası ve Aktif Pencere Takibi Katmanı (src/state)
+MacBook Air M2 Zero-Idle-RAM Mimarisi (Faz 2)
 """
 
-__version__ = "0.2.0-stub"
+from src.state.clipboard import ClipboardManager, ClipboardSnapshot
+from src.state.manager import CapturedContext, StateManager
+from src.state.window_tracker import SourceAppInfo, WindowTracker
+
+__all__ = [
+    "ClipboardManager",
+    "ClipboardSnapshot",
+    "SourceAppInfo",
+    "WindowTracker",
+    "CapturedContext",
+    "StateManager",
+]

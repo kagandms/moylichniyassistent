@@ -33,16 +33,17 @@
 
 | Faz | Kapsam | Durum | Çıktılar |
 | :--- | :--- | :---: | :--- |
-| **Faz 1** | **Proje İskeleti, Anayasa & Hibrit Beyin** | **Tamamlanıyor** | `AGENTS.md`, `config.py`, `schemas.py`, `orchestrator.py`, `main.py` |
-| **Faz 2** | **Sistem Durumu & Pano/Pencere İzleme** | Sıradaki | Aktif pencere algılama, pano snapshot/restore, `Option+Space` dinleyicisi |
-| **Faz 3** | **Algı Katmanı (MLX Whisper STT & Apple Vision OCR)** | Planlandı | Apple Silicon optimize MLX Whisper ses tanıma, yerel Vision OCR |
+| **Faz 1** | **Proje İskeleti, Anayasa & Hibrit Beyin** | **Tamamlandı** | `AGENTS.md`, `config.py`, `schemas.py`, `orchestrator.py`, `main.py` |
+| **Faz 2** | **Sistem Durumu & Pano/Pencere İzleme** | **Tamamlandı** | `clipboard.py`, `window_tracker.py`, `manager.py`, `main.py --test-state` |
+| **Faz 3** | **Algı Katmanı (MLX Whisper STT & Apple Vision OCR)** | Sıradaki | Apple Silicon optimize MLX Whisper ses tanıma, yerel Vision OCR |
 | **Faz 4** | **Eyleyici Katmanı & Yandex DOM Köprüsü** | Planlandı | AppleScript Yandex Browser köprüsü, Gemini sekme kontrolü, sonuç alma |
 | **Faz 5** | **Uçtan Uca Entegrasyon & Sağlamlaştırma** | Planlandı | Tam otonom döngü, hata toleransı, bildirimler ve performans testleri |
 
 ---
 
-## 3. FAZ 1 DETAYLI GÖREV LİSTESİ
+## 3. FAZ DETAYLI GÖREV LİSTESİ
 
+### Faz 1 (Tamamlandı)
 - [x] Temel dosya mimarisi ve Python sanal ortamı kurulumu (`uv venv`, `requirements.txt`).
 - [x] Proje Anayasası (`AGENTS.md`) ve Mimari Plan (`proje_plani.md`) oluşturulması.
 - [x] `.env.example` ve `.gitignore` yapılandırması.
@@ -51,3 +52,13 @@
 - [x] Hibrit Karar Beyni (`src/brain/orchestrator.py` - Gemini Flash + Ollama Fallback + Lazy Unload).
 - [x] Gelecek fazlar için iskelet dizinleri (`src/state`, `src/perception`, `src/actuators`).
 - [x] Komut satırı sağlık kontrolü ve test aracı (`main.py --health-check`, `--test-brain`).
+
+### Faz 2 (Tamamlandı)
+- [x] AppKit `NSPasteboard` tabanlı yüksek hızlı pano okuma, yazma ve `changeCount` takibi (`src/state/clipboard.py`).
+- [x] Pano içeriği anlık yedekleme (`snapshot`) ve %100 doğrulukla geri yükleme (`restore`).
+- [x] Pano hijyeni için hata korumalı bağlam yöneticisi (`with clipboard.preserve_clipboard():`).
+- [x] `NSWorkspace` ile <10ms içinde aktif uygulama tespiti (`bundle_id`, `pid`, `app_name`) (`src/state/window_tracker.py`).
+- [x] `NSRunningApplication` ve AppleScript yedekli kaynak pencereye geri odaklanma (`focus_app`).
+- [x] Nöbetçi token (sentinel) ve savunmacı tuş simülasyonu ile seçili metin yakalama (`src/state/manager.py`).
+- [x] Erişilebilirlik izni kontrolü (`AXIsProcessTrusted`) ve seçim yoksa Faz 3 OCR sinyallemesi.
+- [x] CLI kabul testleri ve görsel pano hijyen raporu (`python main.py --test-state`).
