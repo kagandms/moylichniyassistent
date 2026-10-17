@@ -43,12 +43,13 @@ while true; do
     echo -e "${GREEN}Lütfen yapmak istediğiniz işlemi seçin:${NC}"
     echo "  [1] 🎧 Kısayol Servisini Başlat (Option + Space Dinleyicisi)"
     echo "  [2] ⚡ Hemen Komut Ver (Spotlight Komut Penceresini Aç)"
-    echo "  [3] 🔍 Sistem Sağlık ve Donanım Kontrolü (Diagnostics)"
-    echo "  [4] 🧪 Uçtan Uca (E2E) Sistem Kabul Testini Çalıştır"
-    echo "  [5] 🧹 Yerel LLM Bellek Tahliyesi (RAM Temizliği)"
+    echo "  [3] 🔑 Gemini API Anahtarı Tanımla (.env Kurulumu)"
+    echo "  [4] 🔍 Sistem Sağlık ve Donanım Kontrolü (Diagnostics)"
+    echo "  [5] 🧪 Uçtan Uca (E2E) Sistem Kabul Testini Çalıştır"
+    echo "  [6] 🧹 Yerel LLM Bellek Tahliyesi (RAM Temizliği)"
     echo "  [0] ❌ Çıkış"
     echo ""
-    read -p "Seçiminiz [0-5]: " secim
+    read -p "Seçiminiz [0-6]: " secim
 
     case $secim in
         1)
@@ -65,15 +66,20 @@ while true; do
             ;;
         3)
             echo ""
-            $PYTHON main.py --health-check
+            $PYTHON main.py --setup-api-key
             echo ""
             ;;
         4)
             echo ""
-            $PYTHON main.py --test-e2e
+            $PYTHON main.py --health-check
             echo ""
             ;;
         5)
+            echo ""
+            $PYTHON main.py --test-e2e
+            echo ""
+            ;;
+        6)
             echo ""
             $PYTHON main.py --unload-ollama
             echo ""
@@ -83,7 +89,7 @@ while true; do
             exit 0
             ;;
         *)
-            echo -e "${RED}Geçersiz seçim! Lütfen 0-5 arasında bir numara girin.${NC}"
+            echo -e "${RED}Geçersiz seçim! Lütfen 0-6 arasında bir numara girin.${NC}"
             echo ""
             ;;
     esac

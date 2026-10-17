@@ -9,12 +9,14 @@ import json
 from typing import Any, Dict, List, Literal
 from pydantic import BaseModel, Field
 
-# Asistanın desteklediği 4 temel atomik eylem tipi
+# Asistanın desteklediği 6 temel atomik eylem tipi
 ActionType = Literal[
     "capture_source_context",  # Aktif pencereyi kaydet ve seçili metni/ekranı kopyala
     "send_to_yandex_gemini",   # Yandex'teki açık Gemini sekmesine metni/promptu gönder ve cevabı al
     "paste_to_source_app",     # Alınan cevabı ilk pencereye geri yapıştır
     "speak_or_notify",         # Kullanıcıya sesli/yazılı bildirim ver
+    "open_application",        # Belirtilen macOS uygulamasını açar veya öne getirir
+    "close_application",       # Belirtilen macOS uygulamasını güvenli şekilde kapatır
 ]
 
 

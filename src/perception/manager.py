@@ -110,11 +110,11 @@ class PerceptionManager:
     def record_and_transcribe(
         self,
         source_app: SourceAppInfo,
-        language: str = "tr",
+        language: Optional[str] = None,
         max_duration: float = 15.0
     ) -> PerceivedContext:
         """
-        Mikrofonu VAD ile açar, kullanıcı susunca kaydı bitirip Türkçe STT yapar.
+        Mikrofonu VAD ile açar, kullanıcı susunca kaydı bitirip çok dilli (TR/EN/RU) STT yapar.
         """
         capture_res = self.audio.record_until_silence(max_duration=max_duration)
         if not capture_res.had_speech:

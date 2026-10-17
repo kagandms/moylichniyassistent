@@ -13,6 +13,7 @@ import logging
 import time
 from typing import Any, Dict, List, Optional
 
+from src.actuators.app_controller import AppController, normalize_app_name
 from src.actuators.notifier import SystemNotifier
 from src.actuators.yandex_gemini import GeminiBridgeResult, YandexGeminiBridge
 from src.brain.schemas import AgentAction, ExecutionPlan
@@ -175,6 +176,56 @@ class ActuatorManager:
                         "status": "success",
                         "notification": msg,
                         "spoken": speak and not dry_run,
+                        "elapsed_ms": (time.time() - step_t0) * 1000
+                    })
+
+                # -----------------------------------------------------------------
+                # EYLEM 5: open_application
+                # -----------------------------------------------------------------
+                elif action_name == "open_application":
+                    raw_target = act.parameters.get("target_app") or act.parameters.get("app_name", "")
+                    target_name = normalize_app_name(raw_target)
+                    logger.info(f"📱 [Uygulama Açma] '{target_name}' açılıyor (dry_run={dry_run})...")
+
+                    if dry_run:
+                        ok = True
+                        status_msg = f"Dry-run: '{target_name}' açıldı simüle edildi."
+                    else:
+                        ok = AppController.open_app(target_name)
+                        status_msg = f"'{target_name}' başarıyla açıldı." if ok else f"'{target_name}' açılamadı."
+
+                    step_results.append({
+                        "step": idx,
+                        "action": action_name,
+                        "status": "success" if ok else "failed",
+                        "target_app": target_name,
+                        "message": status_msg,
+                        "elapsed_ms": (time.time() - step_t0) * 1000
+                    })
+                    if not ok and not dry_run:
+                        success_overall = False
+
+                # -----------------------------------------------------------------
+                # EYLEM 6: close_application
+                # -----------------------------------------------------------------
+                elif action_name == "close_application":
+                    raw_target = act.parameters.get("target_app") or act.parameters.get("app_name", "")
+                    target_name = normalize_app_name(raw_target)
+                    logger.info(f"🛑 [Uygulama Kapatma] '{target_name}' kapatılıyor (dry_run={dry_run})...")
+
+                    if dry_run:
+                        ok = True
+                        status_msg = f"Dry-run: '{target_name}' kapatıldı simüle edildi."
+                    else:
+                        ok = AppController.close_app(target_name)
+                        status_msg = f"'{target_name}' başarıyla kapatıldı." if ok else f"'{target_name}' kapatılamadı veya zaten kapalıydı."
+
+                    step_results.append({
+                        "step": idx,
+                        "action": action_name,
+                        "status": "success" if ok else "failed",
+                        "target_app": target_name,
+                        "message": status_msg,
                         "elapsed_ms": (time.time() - step_t0) * 1000
                     })
 

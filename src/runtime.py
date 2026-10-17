@@ -81,7 +81,7 @@ class MacAgentRuntime:
             logger.info("🎙️ Ses kaydı başlatılıyor (VAD sessizlik takibi aktif)...")
             perceived_voice = self.perception_mgr.record_and_transcribe(
                 source_app=source_app,
-                language="tr"
+                language=None
             )
             user_command = perceived_voice.raw_text.strip()
             if not user_command:

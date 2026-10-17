@@ -243,41 +243,53 @@ class HybridOrchestrator:
     def _call_gemini_cloud(self, user_command: str) -> ExecutionPlan:
         """Google Gemini API çağrısı yapar (0 MB yerel bellek tüketir)."""
         prompt = f"{SYSTEM_PROMPT}\n\nKULLANICI KOMUTU:\n\"{user_command}\"\n"
+        models_to_try = [self.config.GEMINI_MODEL, "gemini-3.8-flash", "gemini-flash-latest"]
+        # Tekrarları temizle
+        models_to_try = list(dict.fromkeys([m for m in models_to_try if m]))
 
-        # Öncelikle yeni google-genai kütüphanesini dene
-        try:
-            from google import genai
-            from google.genai import types
+        last_error = None
+        for model_name in models_to_try:
+            # 1. google-genai SDK
+            try:
+                from google import genai
+                from google.genai import types
 
-            client = genai.Client(api_key=self.config.GEMINI_API_KEY)
-            response = client.models.generate_content(
-                model=self.config.GEMINI_MODEL,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    temperature=0.1
+                client = genai.Client(api_key=self.config.GEMINI_API_KEY)
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        temperature=0.1
+                    )
                 )
-            )
-            raw_text = response.text or "{}"
-            return self._parse_json_to_plan(raw_text, user_command, brain="cloud")
-        except Exception as e:
-            logger.debug(f"google-genai SDK ile hata, doğrudan REST API deneniyor: {e}")
+                raw_text = response.text or "{}"
+                return self._parse_json_to_plan(raw_text, user_command, brain="cloud")
+            except Exception as e:
+                logger.debug(f"google-genai SDK ile hata ({model_name}): {e}")
 
-        # Yedek: Doğrudan Google Gemini REST API (Bağımlılık hatasız)
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.config.GEMINI_MODEL}:generateContent?key={self.config.GEMINI_API_KEY}"
-        headers = {"Content-Type": "application/json"}
-        payload = {
-            "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {
-                "responseMimeType": "application/json",
-                "temperature": 0.1
-            }
-        }
-        res = requests.post(url, headers=headers, json=payload, timeout=8.0)
-        res.raise_for_status()
-        data = res.json()
-        raw_text = data["candidates"][0]["content"]["parts"][0]["text"]
-        return self._parse_json_to_plan(raw_text, user_command, brain="cloud")
+            # 2. Doğrudan Google Gemini REST API
+            try:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={self.config.GEMINI_API_KEY}"
+                headers = {"Content-Type": "application/json"}
+                payload = {
+                    "contents": [{"parts": [{"text": prompt}]}],
+                    "generationConfig": {
+                        "responseMimeType": "application/json",
+                        "temperature": 0.1
+                    }
+                }
+                res = requests.post(url, headers=headers, json=payload, timeout=8.0)
+                if res.status_code == 200:
+                    data = res.json()
+                    raw_text = data["candidates"][0]["content"]["parts"][0]["text"]
+                    return self._parse_json_to_plan(raw_text, user_command, brain="cloud")
+                else:
+                    last_error = f"Status {res.status_code}: {res.text[:120]}"
+            except Exception as req_err:
+                last_error = str(req_err)
+
+        raise RuntimeError(f"Gemini Cloud çağrısı başarısız oldu: {last_error}")
 
     def _call_ollama_local(self, user_command: str) -> ExecutionPlan:
         """
@@ -317,32 +329,34 @@ class HybridOrchestrator:
         actions: List[AgentAction] = []
         for act in raw_actions:
             action_name = act.get("action")
-            if action_name in ("capture_source_context", "send_to_yandex_gemini", "paste_to_source_app", "speak_or_notify"):
+            if action_name in (
+                "capture_source_context",
+                "send_to_yandex_gemini",
+                "paste_to_source_app",
+                "speak_or_notify",
+                "open_application",
+                "close_application"
+            ):
                 actions.append(AgentAction(
                     action=action_name,
                     description=act.get("description", action_name),
                     parameters=act.get("parameters", {})
                 ))
 
+        # Kritik Güvenlik Kuralı: Uygulama açma/kapatma varsa OCR veya Gemini adımlarını temizle
+        has_app_control = any(a.action in ("close_application", "open_application") for a in actions)
+        if has_app_control:
+            actions = [a for a in actions if a.action in ("close_application", "open_application", "speak_or_notify")]
+            if not any(a.action == "speak_or_notify" for a in actions):
+                actions.append(AgentAction(
+                    action="speak_or_notify",
+                    description="Uygulama eylemi bildirimini ver",
+                    parameters={"message": "İşlem tamamlandı.", "notify_type": "banner"}
+                ))
+
         if not actions:
-            # Fallback güvenli eylem
-            actions = [
-                AgentAction(
-                    action="capture_source_context",
-                    description="Kaynak içeriği kopyala",
-                    parameters={"capture_type": "selection", "save_source_app": True}
-                ),
-                AgentAction(
-                    action="send_to_yandex_gemini",
-                    description="Yandex Gemini'ye ilet",
-                    parameters={"prompt": user_command, "include_captured_text": True}
-                ),
-                AgentAction(
-                    action="paste_to_source_app",
-                    description="Sonucu kaynak pencereye yapıştır",
-                    parameters={"target": "original_app"}
-                )
-            ]
+            logger.warning("LLM geçerli eylem listesi döndürmedi, kural tabanlı motor devreye giriyor.")
+            return self._generate_mock_plan(user_command, reason="Model geçerli eylemler üretemedi.")
 
         return ExecutionPlan(
             user_command=user_command,
@@ -352,59 +366,163 @@ class HybridOrchestrator:
         )
 
     # -------------------------------------------------------------------------
-    # Kural Tabanlı Simülasyon (Mock Mode)
+    # Kural Tabanlı Simülasyon (Mock Mode / Smart Fallback)
     # -------------------------------------------------------------------------
 
     def _generate_mock_plan(self, user_command: str, reason: Optional[str] = None) -> ExecutionPlan:
-        """API anahtarı veya Ollama olmadan test ve doğrulama yapabilen şema uyumlu simülasyon."""
-        cmd_lower = user_command.lower()
+        """API anahtarı veya Ollama olmadan test ve doğrulama yapabilen çok dilli (TR/EN/RU) kural tabanlı planlayıcı."""
+        cmd_lower = user_command.lower().strip()
         actions: List[AgentAction] = []
 
-        # Komut analizi
-        needs_capture = any(w in cmd_lower for w in ["kopyala", "seçili", "ekrandaki", "ekran", "metni", "çıktı", "bu"])
-        needs_gemini = any(w in cmd_lower for w in ["gemini", "yandex", "çevir", "özetle", "düzelt", "açıkla", "sor"])
-        needs_paste = any(w in cmd_lower for w in ["yapıştır", "geri", "yaz", "aktar"])
-        needs_notify = any(w in cmd_lower for w in ["haber ver", "söyle", "bildir", "sesli"])
+        # 1. Kapatma / Quit / Close / Закрыть Komutları (TR / EN / RU)
+        close_patterns = [
+            "kapat", "çık", "sonlandır", "bitir",
+            "close", "quit", "exit", "terminate", "kill",
+            "закрой", "выйди", "выключи", "закрыть", "останови"
+        ]
+        is_close_cmd = any(w in cmd_lower for w in close_patterns)
 
-        # 1. Adım: Kaynak yakalama
-        if needs_capture or not actions:
+        # 2. Açma / Open / Launch / Открыть Komutları (TR / EN / RU)
+        open_patterns = [
+            "aç", "başlat", "çalıştır",
+            "open", "launch", "start",
+            "открой", "запусти", "открыть", "запустить"
+        ]
+        is_open_cmd = any(w in cmd_lower for w in open_patterns)
+
+        # Bilinen macOS uygulamaları eşlemesi (TR / EN / RU)
+        known_apps = [
+            ("antigravity", "Antigravity"),
+            ("антигравити", "Antigravity"),
+            ("yandex", "Yandex"),
+            ("яндекс", "Yandex"),
+            ("safari", "Safari"),
+            ("сафари", "Safari"),
+            ("notes", "Notes"),
+            ("notlar", "Notes"),
+            ("заметки", "Notes"),
+            ("terminal", "Terminal"),
+            ("терминал", "Terminal"),
+            ("vscode", "Visual Studio Code"),
+            ("vs code", "Visual Studio Code"),
+            ("visual studio code", "Visual Studio Code"),
+            ("calculator", "Calculator"),
+            ("hesap makinesi", "Calculator"),
+            ("калькулятор", "Calculator"),
+        ]
+
+        detected_app = None
+        for alias, app_name in known_apps:
+            if alias in cmd_lower:
+                detected_app = app_name
+                break
+
+        # A) SİSTEM KOMUTU: UYGULAMA KAPATMA (ASLA OCR / YANDEX ÇAĞRILMAZ!)
+        if is_close_cmd:
+            target = detected_app or "Antigravity"
             actions.append(AgentAction(
-                action="capture_source_context",
-                description="Kullanıcının aktif penceresini kaydet ve seçili metni/ekranı kopyala",
-                parameters={"capture_type": "selection", "save_source_app": True}
+                action="close_application",
+                description=f"{target} uygulamasını kapat",
+                parameters={"target_app": target}
             ))
+            if any(w in cmd_lower for w in ["закрой", "закрыть", "выйди", "выключи"]):
+                msg = f"Приложение {target} закрыто."
+            elif any(w in cmd_lower for w in ["close", "quit", "exit"]):
+                msg = f"{target} has been closed."
+            else:
+                msg = f"{target} kapatıldı."
+
+            actions.append(AgentAction(
+                action="speak_or_notify",
+                description="Uygulama kapatma bildirimini ver",
+                parameters={"message": msg, "notify_type": "banner"}
+            ))
+            return ExecutionPlan(
+                user_command=user_command,
+                reasoning=reason or f"Sistem komutu algılandı: {target} uygulaması kapatılıyor.",
+                brain_used="mock",
+                actions=actions
+            )
+
+        # B) SİSTEM KOMUTU: UYGULAMA AÇMA (ASLA OCR / YANDEX ÇAĞRILMAZ!)
+        if is_open_cmd and detected_app:
+            target = detected_app
+            actions.append(AgentAction(
+                action="open_application",
+                description=f"{target} uygulamasını aç",
+                parameters={"target_app": target}
+            ))
+            if any(w in cmd_lower for w in ["открой", "открыть", "запусти", "запустить"]):
+                msg = f"Приложение {target} запущено."
+            elif any(w in cmd_lower for w in ["open", "launch", "start"]):
+                msg = f"{target} has been opened."
+            else:
+                msg = f"{target} açıldı."
+
+            actions.append(AgentAction(
+                action="speak_or_notify",
+                description="Uygulama açma bildirimini ver",
+                parameters={"message": msg, "notify_type": "banner"}
+            ))
+            return ExecutionPlan(
+                user_command=user_command,
+                reasoning=reason or f"Sistem komutu algılandı: {target} uygulaması açılıyor.",
+                brain_used="mock",
+                actions=actions
+            )
+
+        # C) GEMINI & METİN İŞLEME KOMUTLARI (TR / EN / RU)
+        needs_paste = any(w in cmd_lower for w in [
+            "yapıştır", "geri", "aktar", "yerine",
+            "paste", "insert", "back",
+            "вставь", "обратно", "вставить"
+        ])
+        needs_notify_only = any(w in cmd_lower for w in [
+            "söyle", "sesli", "haber ver",
+            "tell me", "say", "speak",
+            "скажи", "озвучь", "прочитай"
+        ])
+
+        # 1. Adım: Kaynak yakalama (OCR / Selection)
+        is_screen = any(w in cmd_lower for w in ["ekran", "экране", "экран", "screen"])
+        actions.append(AgentAction(
+            action="capture_source_context",
+            description="Aktif penceredeki metni veya ekranı kaydet",
+            parameters={"capture_type": "screen" if is_screen else "selection", "save_source_app": True}
+        ))
 
         # 2. Adım: Yandex Gemini'ye gönderme
-        if needs_gemini or True:
-            actions.append(AgentAction(
-                action="send_to_yandex_gemini",
-                description="Yandex Browser'daki açık Gemini sekmesine prompt ve yakalanan metni gönder",
-                parameters={
-                    "prompt": user_command,
-                    "include_captured_text": True
-                }
-            ))
+        actions.append(AgentAction(
+            action="send_to_yandex_gemini",
+            description="Yandex Browser'daki açık Gemini sekmesine prompt ve metni gönder",
+            parameters={"prompt": user_command, "include_captured_text": True}
+        ))
 
-        # 3. Adım: Sonucu geri yapıştırma
-        if needs_paste or not needs_notify:
+        # 3. Adım: Geri Yapıştırma
+        if needs_paste or not needs_notify_only:
             actions.append(AgentAction(
                 action="paste_to_source_app",
-                description="Gemini'den alınan yanıtı kullanıcının ilk çalıştığı kaynak pencereye geri yapıştır",
+                description="Gemini yanıtını kaynak uygulamaya geri yapıştır",
                 parameters={"target": "original_app"}
             ))
 
-        # 4. Adım: Kullanıcıya bildirim
+        # 4. Adım: Bildirim
+        if any(w in cmd_lower for w in ["вставь", "отправь", "скопируй", "текст"]):
+            done_msg = "Ответ Gemini успешно получен и обработан."
+        elif any(w in cmd_lower for w in ["copy", "paste", "ask", "summarize"]):
+            done_msg = "Gemini processing completed."
+        else:
+            done_msg = "İşlem tamamlandı, sonuç aktarıldı."
+
         actions.append(AgentAction(
             action="speak_or_notify",
-            description="İşlemin başarıyla tamamlandığını kullanıcıya sesli/yazılı bildir",
-            parameters={"message": "İşlem tamamlandı, sonuç aktarıldı.", "notify_type": "banner"}
+            description="İşlem sonucunu kullanıcıya bildir",
+            parameters={"message": done_msg, "notify_type": "banner"}
         ))
-
-        explanation = reason or "Kural tabanlı simülatör kullanılarak komut 4 atomik adıma ayrıştırıldı."
 
         return ExecutionPlan(
             user_command=user_command,
-            reasoning=explanation,
+            reasoning=reason or "Çok dilli kural tabanlı motor ile yürütme planı oluşturuldu.",
             brain_used="mock",
             actions=actions
         )

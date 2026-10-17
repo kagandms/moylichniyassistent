@@ -44,7 +44,7 @@ class Settings:
         default_factory=lambda: os.getenv("GEMINI_API_KEY", "").strip()
     )
     GEMINI_MODEL: str = field(
-        default_factory=lambda: os.getenv("GEMINI_MODEL", "gemini-2.5-flash").strip()
+        default_factory=lambda: os.getenv("GEMINI_MODEL", "gemini-3.8-flash").strip()
     )
 
     # Yerel Ollama (On-demand Lazy Load)
@@ -52,7 +52,7 @@ class Settings:
         default_factory=lambda: os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").strip()
     )
     OLLAMA_MODEL: str = field(
-        default_factory=lambda: os.getenv("OLLAMA_MODEL", "qwen2.5:7b").strip()
+        default_factory=lambda: os.getenv("OLLAMA_MODEL", "qwen2.5:3b").strip()
     )
     OLLAMA_KEEP_ALIVE: str = field(
         default_factory=lambda: os.getenv("OLLAMA_KEEP_ALIVE", "5m").strip()
@@ -78,7 +78,10 @@ class Settings:
 
     def is_gemini_configured(self) -> bool:
         """Gemini API anahtarının geçerli formatta verilip verilmediğini doğrular."""
-        return bool(self.GEMINI_API_KEY and self.GEMINI_API_KEY != "your_gemini_api_key_here")
+        key = self.GEMINI_API_KEY.strip()
+        if not key or key == "your_gemini_api_key_here":
+            return False
+        return len(key) >= 15
 
     def __post_init__(self) -> None:
         if self.BRAIN_MODE not in ("auto", "cloud", "local"):

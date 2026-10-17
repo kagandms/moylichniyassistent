@@ -11,6 +11,7 @@ Kullanıcının halihazırda açık olan Yandex Browser oturumunu kullanarak:
 
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import subprocess
@@ -296,6 +297,13 @@ class YandexGeminiBridge:
         combined_prompt = f"{prompt}\n\n[İLGİLİ EKRAN METNİ]:\n{context_text}" if context_text else prompt
 
         if not tab_info.found or not js_ok:
+            if not js_ok and tab_info.found:
+                logger.warning(
+                    "⚠️ Yandex'te 'Apple Olaylarından JavaScript'e İzin Ver' kapalı. "
+                    "UI/API yedek moduna geçiliyor..."
+                )
+
+            # A) Gemini API Fallback
             if fallback_to_api and config.config.is_gemini_configured():
                 logger.info(f"🔄 [Fallback] Yandex DOM doğrudan kullanılamadı ({js_msg}). Gemini API'ye yönlendiriliyor...")
                 try:
@@ -316,11 +324,26 @@ class YandexGeminiBridge:
                         elapsed_ms=elapsed
                     )
                 except Exception as api_err:
-                    logger.error(f"Fallback API çağrısı da başarısız: {api_err}")
+                    logger.error(f"Fallback API çağrısı başarısız: {type(api_err).__name__}: {str(api_err)[:100]}")
+
+            # B) UI Paste Fallback (Canlı açık Gemini sekmesi varsa klavye ile yapıştır)
+            if tab_info.found:
+                logger.info("⌨️ [UI Fallback] Açık Gemini sekmesine klavye/pano simülasyonu ile yapıştırılıyor...")
+                pasted = self.ui_paste_fallback(tab_info, combined_prompt)
+                if pasted:
+                    elapsed = (time.time() - t0) * 1000
+                    return GeminiBridgeResult(
+                        success=True,
+                        response_text="[UI Fallback] Mesaj Yandex Gemini sekmesine yapıştırıldı ve gönderildi. Yanıtı tarayıcı sekmesinden takip edebilirsiniz.",
+                        method_used="ui_paste_fallback",
+                        tab_info=tab_info,
+                        js_apple_events_enabled=False,
+                        elapsed_ms=elapsed
+                    )
 
             return GeminiBridgeResult(
                 success=False,
-                error=f"Yandex Gemini kullanılamadı: {js_msg}",
+                error=f"Yandex Gemini kullanılamadı ({js_msg}). Lütfen 'Görünüm > Geliştirici > Apple Olaylarından JavaScript'e İzin Ver' seçeneğini açın veya .env dosyasına GEMINI_API_KEY ekleyin.",
                 tab_info=tab_info,
                 js_apple_events_enabled=js_ok,
                 elapsed_ms=(time.time() - t0) * 1000
@@ -329,14 +352,19 @@ class YandexGeminiBridge:
         # 3. DOĞRUDAN DOM JAVASCRIPT ENJEKSİYONU (Canlı Yandex Oturumu)
         logger.info(f"🚀 [DOM Enjeksiyonu] Prompt Yandex Gemini sekmesine ({tab_info.title}) gönderiliyor...")
 
-        # Prompt metnini JS için güvenli escape et
-        escaped_prompt = json.dumps(combined_prompt)
+        # Prompt metnini Base64 ile encode et (AppleScript tırnak/özel karakter çakışmalarını %100 önler)
+        b64_prompt = base64.b64encode(combined_prompt.encode("utf-8")).decode("ascii")
 
         injection_script = f'''
         tell application "{self.browser_name}"
             tell tab {tab_info.tab_index} of window {tab_info.window_index}
                 execute javascript "(function() {{
-                    const text = {escaped_prompt};
+                    const b64 = '{b64_prompt}';
+                    const bin = atob(b64);
+                    const bytes = new Uint8Array(bin.length);
+                    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+                    const text = new TextDecoder('utf-8').decode(bytes);
+
                     // 1. Giriş kutusunu bul
                     const input = document.querySelector('div.ql-editor[contenteditable=\\"true\\"]') ||
                                   document.querySelector('rich-textarea div[contenteditable=\\"true\\"]') ||
@@ -368,7 +396,7 @@ class YandexGeminiBridge:
             inject_res = subprocess.check_output(
                 ["osascript", "-e", injection_script],
                 text=True,
-                stderr=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
                 timeout=5.0
             ).strip()
             logger.debug(f"DOM inject sonucu: {inject_res}")
@@ -396,7 +424,7 @@ class YandexGeminiBridge:
                 current_text = subprocess.check_output(
                     ["osascript", "-e", read_script],
                     text=True,
-                    stderr=subprocess.DEVNULL,
+                    stderr=subprocess.PIPE,
                     timeout=3.0
                 ).strip()
 
@@ -428,11 +456,21 @@ class YandexGeminiBridge:
                 elapsed_ms=elapsed
             )
 
-        except Exception as e:
-            logger.error(f"DOM köprüsü yürütme hatası: {e}")
+        except subprocess.CalledProcessError as e:
+            err_msg = e.stderr.strip() if e.stderr else f"Çıkış kodu {e.returncode}"
+            logger.error(f"DOM köprüsü yürütme hatası: {err_msg[:160]}")
             return GeminiBridgeResult(
                 success=False,
-                error=str(e),
+                error=f"Yandex DOM hatası: {err_msg[:160]}",
+                tab_info=tab_info,
+                js_apple_events_enabled=js_ok,
+                elapsed_ms=(time.time() - t0) * 1000
+            )
+        except Exception as e:
+            logger.error(f"DOM köprüsü yürütme hatası: {type(e).__name__}: {str(e)[:160]}")
+            return GeminiBridgeResult(
+                success=False,
+                error=f"{type(e).__name__}: {str(e)[:160]}",
                 tab_info=tab_info,
                 js_apple_events_enabled=js_ok,
                 elapsed_ms=(time.time() - t0) * 1000

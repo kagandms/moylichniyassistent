@@ -51,35 +51,43 @@ class SpeechToTextEngine:
     def __init__(self, preferred_engine: str = "auto") -> None:
         self.preferred_engine = preferred_engine
 
-    def transcribe(self, audio_path: str, language: str = "tr") -> STTResult:
+    def transcribe(self, audio_path: str, language: Optional[str] = None) -> STTResult:
         """
         WAV formatındaki ses dosyasını analiz edip metne çevirir.
+        language=None veya 'auto' verildiğinde otomatik dil tespiti yapar (TR / EN / RU).
         """
         if not os.path.exists(audio_path) or os.path.getsize(audio_path) == 0:
             return STTResult(
                 text="",
-                language=language,
+                language=language or "auto",
                 engine_used="none",
                 error="Ses dosyası bulunamadı veya boş."
             )
 
         t0 = time.time()
+        effective_lang = None if language in (None, "auto") else language
 
         # 1. YEREL MLX WHISPER (Eğer kurulu ve tercih edilmişse)
         if _HAS_MLX_WHISPER and self.preferred_engine in ("auto", "local", "mlx"):
             try:
-                logger.info("🧠 [MLX Whisper] Apple Silicon GPU üzerinde yerel ses tanıma başlatılıyor...")
+                logger.info("🧠 [MLX Whisper] Apple Silicon GPU üzerinde yerel ses tanıma başlatılıyor (TR/EN/RU)...")
+                transcribe_kwargs = {
+                    "path_or_hf_repo": "mlx-community/whisper-large-v3-turbo",
+                }
+                if effective_lang:
+                    transcribe_kwargs["language"] = effective_lang
+
                 res = mlx_whisper.transcribe(
                     audio_path,
-                    path_or_hf_repo="mlx-community/whisper-large-v3-turbo",
-                    language=language
+                    **transcribe_kwargs
                 )
                 text = str(res.get("text", "")).strip()
+                detected_lang = str(res.get("language", effective_lang or "auto"))
                 elapsed = (time.time() - t0) * 1000
-                logger.info(f"✨ [MLX Whisper] Tanıma tamamlandı ({elapsed:.1f}ms): '{text}'")
+                logger.info(f"✨ [MLX Whisper] Tanıma tamamlandı ({elapsed:.1f}ms, dil={detected_lang}): '{text}'")
                 return STTResult(
                     text=text,
-                    language=language,
+                    language=detected_lang,
                     engine_used="mlx_whisper",
                     elapsed_ms=elapsed
                 )
@@ -89,7 +97,7 @@ class SpeechToTextEngine:
         # 2. BULUT GEMINI AUDIO API (0 MB Yerel RAM & Yüksek Doğruluk)
         if config.config.is_gemini_configured() and self.preferred_engine in ("auto", "cloud"):
             try:
-                logger.info("☁️ [Gemini Audio API] Ses verisi Gemini Flash'a aktarılıyor (0 MB RAM)...")
+                logger.info("☁️ [Gemini Audio API] Ses verisi Gemini Flash'a aktarılıyor (0 MB RAM, TR/EN/RU)...")
                 with open(audio_path, "rb") as f:
                     audio_bytes = f.read()
 
@@ -100,8 +108,9 @@ class SpeechToTextEngine:
 
                     client = genai.Client(api_key=config.config.GEMINI_API_KEY)
                     prompt = (
-                        "Bu ses kaydını dinle ve içindeki Türkçe konuşmayı harfi harfine yazıya dök (transkribe et). "
-                        "Sadece transkripsiyonu yaz, tırnak işareti, 'Metin:', selamlama vb. hiçbir ekleme yapma."
+                        "Listen to this audio recording and transcribe the speech exactly as spoken. "
+                        "The user may speak in Turkish (TR), English (EN), Russian (RU), or a mix of them. "
+                        "Output ONLY the raw transcription without any quotes, explanations, or prefixes."
                     )
                     response = client.models.generate_content(
                         model=config.config.GEMINI_MODEL,
@@ -115,7 +124,7 @@ class SpeechToTextEngine:
                     logger.info(f"✨ [Gemini STT] Tanıma tamamlandı ({elapsed:.1f}ms): '{text}'")
                     return STTResult(
                         text=text,
-                        language=language,
+                        language=effective_lang or "auto",
                         engine_used="gemini_cloud",
                         elapsed_ms=elapsed
                     )

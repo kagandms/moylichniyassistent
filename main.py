@@ -71,7 +71,9 @@ def display_health_check(orchestrator: HybridOrchestrator) -> None:
 
     # 3. Gemini Bulut Durumu
     if diag["gemini_configured"]:
-        table.add_row("Gemini Cloud API", f"Model: {diag['gemini_model']}", "[bold green]✅ Anahtar Tanımlı (0 RAM)[/bold green]")
+        raw_k = config.config.GEMINI_API_KEY
+        masked_k = f"{raw_k[:4]}...{raw_k[-4:]}" if len(raw_k) > 10 else "Aktif"
+        table.add_row("Gemini Cloud API", f"Model: {diag['gemini_model']} ({masked_k})", "[bold green]✅ Aktif (0 RAM)[/bold green]")
     else:
         table.add_row("Gemini Cloud API", "API Anahtarı Tanımlanmadı", "[bold yellow]⚠️ .env içinde eksik[/bold yellow]")
 
@@ -587,10 +589,55 @@ def run_e2e_test() -> None:
     console.print()
 
 
+def setup_api_key_interactive() -> None:
+    """Kullanıcının 10 saniyede ücretsiz Gemini API anahtarını .env içine girmesini sağlar."""
+    console.print(Panel(
+        "[bold cyan]🔑 Google Gemini API Anahtarı Kurulumu[/bold cyan]\n\n"
+        "1. Ücretsiz API anahtarınızı alın: [underline green]https://aistudio.google.com/app/apikey[/underline green]\n"
+        "2. Aldığınız anahtarı aşağıya yapıştırıp Enter'a basın (veya iptal için boş bırakın):",
+        border_style="cyan"
+    ))
+    try:
+        new_key = input("👉 Gemini API Anahtarı: ").strip()
+    except (KeyboardInterrupt, EOFError):
+        console.print("\n[yellow]İptal edildi.[/yellow]")
+        return
+
+    if not new_key:
+        console.print("[dim]Herhangi bir anahtar girilmedi. Değişiklik yapılmadı.[/dim]")
+        return
+
+    env_path = config.BASE_DIR / ".env"
+    lines = []
+    found = False
+    if env_path.exists():
+        with open(env_path, "r", encoding="utf-8") as f:
+            for line in f:
+                if line.startswith("GEMINI_API_KEY="):
+                    lines.append(f"GEMINI_API_KEY={new_key}\n")
+                    found = True
+                else:
+                    lines.append(line)
+
+    if not found:
+        lines.append(f"GEMINI_API_KEY={new_key}\n")
+
+    with open(env_path, "w", encoding="utf-8") as f:
+        f.writelines(lines)
+
+    console.print(f"[bold green]✅ API Anahtarı başarıyla .env içine kaydedildi![/bold green] ([dim]{env_path}[/dim])")
+    console.print("[dim]Not: Asistan bundan sonra tüm işlemlerde 0 MB RAM tüketen Gemini Flash API'yi öncelikli kullanacaktır.[/dim]\n")
+
+
 def main() -> None:
     """CLI giriş noktası."""
     parser = argparse.ArgumentParser(
-        description="MacBook Air M2 Agentic PC Asistanı - Faz 1'den Faz 5'e Tam Entegre Sistem"
+        description="MacBook Air M2 Agentic PC Asistanı - Faz 1'den Faz 6'ya Tam Entegre Sistem"
+    )
+    parser.add_argument(
+        "--setup-api-key",
+        action="store_true",
+        help="Google Gemini API anahtarını kolayca .env dosyasına kaydeder"
     )
     parser.add_argument(
         "--test-e2e",
@@ -656,6 +703,11 @@ def main() -> None:
     orchestrator = HybridOrchestrator()
     runtime = MacAgentRuntime(orchestrator=orchestrator)
 
+    # 0. API Anahtarı Kurulumu
+    if args.setup_api_key:
+        setup_api_key_interactive()
+        return
+
     # 1. Ollama RAM Tahliyesi
     if args.unload_ollama:
         console.print("[yellow]Ollama RAM tahliyesi isteniyor...[/yellow]")
@@ -710,9 +762,6 @@ def main() -> None:
         run_actuators_tests()
         return
 
-    # Varsayılan olarak veya --health-check verildiğinde sağlık kontrolünü göster
-    display_health_check(orchestrator)
-
     # Test komutu varsa çalıştır
     test_command = args.test_brain
     if test_command:
@@ -720,6 +769,10 @@ def main() -> None:
         plan = orchestrator.plan(test_command, force_mock=args.mock)
         display_execution_plan(plan)
         console.print("[bold green]✨ Plan Doğrulandı![/bold green]\n")
+        return
+
+    # Varsayılan olarak veya --health-check verildiğinde sağlık kontrolünü göster
+    display_health_check(orchestrator)
 
 
 if __name__ == "__main__":
